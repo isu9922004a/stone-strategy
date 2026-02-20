@@ -2,13 +2,12 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>明星麻將 - 經典大頭版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>明星麻將 - 經典手遊版</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&display=swap');
         
@@ -16,100 +15,121 @@
             margin: 0; 
             background: #000; 
             overflow: hidden; 
-            font-family: 'Microsoft JhengHei', sans-serif;
-        }
-
-        /* 模擬圖片中的窗外背景 */
-        .game-background {
-            background: linear-gradient(to bottom, #1a3a5a 0%, #4a90e2 40%, #062012 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             height: 100vh;
             width: 100vw;
-            position: absolute;
-            z-index: -2;
         }
 
-        /* 3D 牌桌透視效果 */
-        .table-container {
-            perspective: 1000px;
-            height: 100vh;
+        /* 模擬圖片中的背景 */
+        .game-wrapper {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to bottom, #1e3a8a 0%, #3b82f6 30%, #064e3b 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        /* 3D 牌桌 - 針對手機比例優化 */
+        .table-area {
+            perspective: 1200px;
+            width: 100%;
+            flex: 1;
             display: flex;
             align-items: center;
             justify-content: center;
+            margin-top: -10%; /* 往上移一點避開底欄 */
         }
 
         .mahjong-table {
-            width: 90vw;
-            height: 65vh;
-            background: radial-gradient(circle, #2d5a41 0%, #1a3a2a 100%);
-            border: 12px solid #5d3a1a;
-            border-radius: 40px;
-            transform: rotateX(25deg);
-            box-shadow: 0 50px 100px rgba(0,0,0,0.8), inset 0 0 50px rgba(0,0,0,0.5);
+            width: 95vw;
+            height: 50vh;
+            background: radial-gradient(circle, #2d5a41 0%, #14532d 100%);
+            border: 8px solid #78350f;
+            border-radius: 30px;
+            transform: rotateX(35deg); /* 調整角度防止太長 */
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 0 40px rgba(0,0,0,0.4);
             position: relative;
             display: flex;
-            align-items: center;
+            flex-wrap: wrap;
+            align-content: center;
             justify-content: center;
+            padding: 20px;
         }
 
-        /* 角色大頭貼 */
-        .avatar-box {
+        /* 角色頭像 - 貼近桌緣 */
+        .npc-box {
             position: absolute;
-            display: flex;
-            flex-col: column;
-            align-items: center;
             z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        .avatar-img {
-            width: 100px;
-            height: 100px;
-            border-radius: 20px;
-            background: #eee;
-            border: 3px solid #fcd34d;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+        .npc-avatar {
+            width: 70px;
+            height: 70px;
+            border-radius: 12px;
+            border: 2px solid #fbbf24;
+            background: #fff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
 
-        /* 麻將牌樣式優化 */
+        /* 麻將牌 */
         .mj-tile {
             font-family: 'Noto Serif TC', serif;
-            background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            border-bottom: 4px solid #ddd;
+            background: white;
+            border-radius: 3px;
+            border: 1px solid #d1d5db;
+            border-bottom: 3px solid #9ca3af;
             display: flex;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
             user-select: none;
+            transition: transform 0.1s;
         }
-        .mj-tile.player { width: 44px; height: 60px; font-size: 40px; }
-        .mj-tile.discard { width: 30px; height: 42px; font-size: 24px; margin: 1px; }
-        .mj-tile:active { transform: translateY(2px); }
-        .mj-tile.selected { transform: translateY(-15px); border-color: #fbbf24; border-bottom-width: 8px; }
+        
+        /* 手牌：根據螢幕寬度自動計算大小 */
+        .player-tile {
+            width: calc(100vw / 18);
+            max-width: 40px;
+            height: calc(1.4 * calc(100vw / 18));
+            max-height: 56px;
+            font-size: calc(100vw / 22);
+            margin: 0 1px;
+        }
+        .player-tile.selected {
+            transform: translateY(-12px);
+            border-bottom-width: 6px;
+            border-color: #fbbf24;
+        }
 
-        /* 底部操作列 */
-        .control-bar {
-            position: fixed;
-            bottom: 0;
+        /* 丟出的牌 */
+        .discard-tile {
+            width: 22px;
+            height: 30px;
+            font-size: 18px;
+            margin: 1px;
+        }
+
+        /* 底部 UI */
+        .bottom-ui {
             width: 100%;
-            height: 120px;
-            background: linear-gradient(to top, #000 0%, transparent 100%);
+            background: rgba(0,0,0,0.85);
+            padding: 8px 4px env(safe-area-inset-bottom);
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
             z-index: 100;
         }
 
-        .info-panel {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            padding: 5px 15px;
-            border-radius: 5px;
-            border: 1px solid #444;
-            color: #fff;
-            font-size: 14px;
+        .status-bar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 12px;
+            font-size: 12px;
+            color: #fbbf24;
         }
     </style>
 </head>
@@ -117,127 +137,116 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useCallback, useMemo } = React;
+        const { useState, useEffect } = React;
 
         const TILE_SYMBOLS = ['🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏','🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡','🀐','🀑','🀒','🀓','🀔','🀕','🀖','🀗','🀘','🀀','🀁','🀂','🀃','🀄','🀅','🀆'];
-        
-        const CHARACTERS = [
-            { name: '我是七六', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me', role: 'player' },
-            { name: '憲哥', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', quote: '見鬼啦！' },
-            { name: '乃哥', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka', quote: '我不錄了！' },
-            { name: '美鳳姐', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily', quote: '這張水喔～' }
-        ];
 
         const App = () => {
             const [deck, setDeck] = useState([]);
-            const [players, setPlayers] = useState(CHARACTERS.map((c, i) => ({ ...c, id: i, hand: [], discards: [] })));
+            const [players, setPlayers] = useState([
+                { name: '我是七六', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me' },
+                { name: '憲哥', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' },
+                { name: '美鳳姐', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily' },
+                { name: '乃哥', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka' }
+            ]);
             const [turn, setTurn] = useState(0);
             const [selectedIdx, setSelectedIdx] = useState(null);
-            const [gameMsg, setGameMsg] = useState("麻將入門 - 莊家準備開牌");
 
             const initGame = () => {
                 let d = []; for(let i=0; i<34; i++) for(let j=0; j<4; j++) d.push(i);
                 d.sort(() => Math.random() - 0.5);
-                const nextPlayers = CHARACTERS.map((c, i) => ({ 
-                    ...c, 
-                    id: i, 
-                    hand: d.splice(0, 16).sort((a,b)=>a-b), 
-                    discards: [] 
-                }));
-                setDeck(d); setPlayers(nextPlayers); setTurn(0);
-                drawTile(0, nextPlayers, d);
+                const p = [...players];
+                p.forEach(player => {
+                    player.hand = d.splice(0, 16).sort((a,b)=>a-b);
+                    player.discards = [];
+                });
+                setDeck(d); setPlayers(p); setTurn(0);
+                drawTile(0, p, d);
             };
 
-            const drawTile = (pIdx, curPlayers, curDeck) => {
-                if (curDeck.length <= 0) return;
-                const nextDeck = [...curDeck];
-                const tile = nextDeck.shift();
-                const nextPlayers = [...curPlayers];
-                nextPlayers[pIdx].hand.push(tile);
-                setDeck(nextDeck); setPlayers(nextPlayers);
-
-                if (pIdx !== 0) {
-                    setTimeout(() => handleDiscard(pIdx, nextPlayers[pIdx].hand.length - 1, nextPlayers, nextDeck), 1500);
-                }
+            const drawTile = (idx, curP, curD) => {
+                if (curD.length === 0) return;
+                const nextD = [...curD];
+                const tile = nextD.shift();
+                const nextP = [...curP];
+                nextP[idx].hand.push(tile);
+                setDeck(nextD); setPlayers(nextP);
+                if (idx !== 0) setTimeout(() => discard(idx, nextP[idx].hand.length-1, nextP, nextD), 1000);
             };
 
-            const handleDiscard = (pIdx, tileIdx, curPlayers, curDeck) => {
-                const nextPlayers = [...curPlayers];
-                const tile = nextPlayers[pIdx].hand.splice(tileIdx, 1)[0];
-                nextPlayers[pIdx].discards.push(tile);
-                nextPlayers[pIdx].hand.sort((a,b)=>a-b);
-                setPlayers(nextPlayers); setSelectedIdx(null);
-
-                const nextTurn = (pIdx + 1) % 4;
+            const discard = (idx, tIdx, curP, curD) => {
+                const nextP = [...curP];
+                const tile = nextP[idx].hand.splice(tIdx, 1)[0];
+                nextP[idx].discards.push(tile);
+                nextP[idx].hand.sort((a,b)=>a-b);
+                setPlayers(nextP); setSelectedIdx(null);
+                const nextTurn = (idx + 1) % 4;
                 setTurn(nextTurn);
-                setTimeout(() => drawTile(nextTurn, nextPlayers, curDeck), 500);
+                setTimeout(() => drawTile(nextTurn, nextP, curD), 500);
             };
 
             useEffect(() => { initGame(); }, []);
 
             return (
-                <div className="game-background overflow-hidden flex flex-col items-center justify-center">
-                    {/* 上方角色 */}
-                    <div className="absolute top-10 flex flex-col items-center">
-                        <img src={players[2].avatar} className={`avatar-img ${turn===2?'ring-4 ring-yellow-400':''}`} />
-                        <div className="bg-yellow-600 px-2 text-xs mt-1 text-white rounded">美鳳姐</div>
+                <div className="game-wrapper">
+                    {/* 上方 NPC */}
+                    <div className="npc-box top-4">
+                        <img src={players[2].avatar} className={`npc-avatar ${turn===2?'ring-4 ring-yellow-400':''}`} />
+                        <span className="text-[10px] text-white bg-black/50 px-1 rounded">{players[2].name}</span>
                     </div>
 
-                    {/* 兩側角色 */}
-                    <div className="absolute left-10 top-1/2 -translate-y-1/2 flex flex-col items-center">
-                        <img src={players[1].avatar} className={`avatar-img ${turn===1?'ring-4 ring-yellow-400':''}`} />
-                        <div className="bg-yellow-600 px-2 text-xs mt-1 text-white rounded">憲哥</div>
+                    {/* 左右 NPC */}
+                    <div className="npc-box left-2 top-[35%]">
+                        <img src={players[1].avatar} className={`npc-avatar ${turn===1?'ring-4 ring-yellow-400':''}`} />
+                        <span className="text-[10px] text-white bg-black/50 px-1 rounded">{players[1].name}</span>
                     </div>
-                    <div className="absolute right-10 top-1/2 -translate-y-1/2 flex flex-col items-center">
-                        <img src={players[3].avatar} className={`avatar-img ${turn===3?'ring-4 ring-yellow-400':''}`} />
-                        <div className="bg-yellow-600 px-2 text-xs mt-1 text-white rounded">乃哥</div>
+                    <div className="npc-box right-2 top-[35%]">
+                        <img src={players[3].avatar} className={`npc-avatar ${turn===3?'ring-4 ring-yellow-400':''}`} />
+                        <span className="text-[10px] text-white bg-black/50 px-1 rounded">{players[3].name}</span>
                     </div>
 
                     {/* 牌桌區 */}
-                    <div className="table-container">
+                    <div className="table-area">
                         <div className="mahjong-table">
-                            <div className="w-full h-full p-12 flex flex-wrap content-center justify-center">
-                                {players.flatMap(p => p.discards).map((t, i) => (
-                                    <div key={i} className={`mj-tile discard ${t<=8||t===31?'text-red-600':'text-green-800'}`}>
-                                        {TILE_SYMBOLS[t]}
-                                    </div>
-                                ))}
-                            </div>
-                            
-                            {/* 剩餘張數小盒 */}
-                            <div className="absolute top-4 left-4 bg-black/50 text-yellow-400 p-2 border border-white/20 rounded">
-                                <span className="text-xs">剩餘:</span> {deck.length}
-                            </div>
+                            {players.flatMap(p => p.discards).map((t, i) => (
+                                <div key={i} className={`mj-tile discard-tile ${t<=8||t===31?'text-red-600':'text-green-800'}`}>{TILE_SYMBOLS[t]}</div>
+                            ))}
+                            <div className="absolute top-2 left-2 text-[10px] text-yellow-500 font-bold">剩餘: {deck.length}</div>
                         </div>
                     </div>
 
-                    {/* 玩家手牌區 */}
-                    <div className="control-bar flex flex-col gap-2">
-                        {turn === 0 && (
-                            <div className="flex gap-4 mb-2">
-                                <button onClick={() => selectedIdx !== null && handleDiscard(0, selectedIdx, players, deck)} 
-                                    className="bg-yellow-500 hover:bg-yellow-400 text-black px-8 py-1 rounded font-black shadow-lg">出牌</button>
-                                <button className="bg-red-600 text-white px-8 py-1 rounded font-black shadow-lg">胡牌</button>
-                            </div>
-                        )}
-                        <div className="flex gap-1">
+                    {/* 底部 UI 與手牌 */}
+                    <div className="bottom-ui">
+                        <div className="flex gap-4 mb-3">
+                            {turn === 0 && (
+                                <>
+                                    <button onClick={() => selectedIdx !== null && discard(0, selectedIdx, players, deck)} 
+                                        className="bg-yellow-500 px-6 py-1 rounded text-sm font-bold text-black shadow-lg active:scale-90">出牌</button>
+                                    <button className="bg-red-600 px-6 py-1 rounded text-sm font-bold text-white shadow-lg opacity-50">胡牌</button>
+                                </>
+                            )}
+                        </div>
+                        
+                        <div className="flex justify-center w-full px-1 mb-2">
                             {players[0].hand.map((id, i) => (
                                 <div key={i} 
                                     onClick={() => turn === 0 && setSelectedIdx(i)}
-                                    className={`mj-tile player ${id<=8||id===31?'text-red-600':'text-green-800'} ${selectedIdx===i?'selected':''}`}>
+                                    className={`mj-tile player-tile ${id<=8||id===31?'text-red-600':'text-green-800'} ${selectedIdx===i?'selected':''}`}>
                                     {TILE_SYMBOLS[id]}
                                 </div>
                             ))}
                         </div>
-                    </div>
 
-                    {/* 底部資訊列 */}
-                    <div className="info-panel flex gap-8 items-center">
-                        <div className="text-green-400 font-bold">東</div>
-                        <div>{players[0].name}</div>
-                        <div className="text-yellow-400 font-bold">Lv.12</div>
-                        <div className="text-yellow-300">💰 9,930</div>
-                        <div className="bg-white/20 px-2 rounded ml-10 text-xs">{gameMsg}</div>
+                        <div className="status-bar">
+                            <div className="flex gap-3">
+                                <span className="text-green-500 font-bold">東</span>
+                                <span>我是七六</span>
+                            </div>
+                            <div className="flex gap-3">
+                                <span>💰 9,930</span>
+                                <span className="text-white/50">Lv.12 麻將入門</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
