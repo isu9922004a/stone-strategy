@@ -1,282 +1,641 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>明星麻將 - 高清大字版</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&display=swap');
+import React, { useState, useEffect, useRef } from 'react';
+
+// ==========================================
+// 遊戲輔助函式、常數與對話庫
+// ==========================================
+
+// 麻將牌型定義 (使用 Unicode)
+const TILE_MAP = {
+    'W1': '🀇', 'W2': '🀈', 'W3': '🀉', 'W4': '🀊', 'W5': '🀋', 'W6': '🀌', 'W7': '🀍', 'W8': '🀎', 'W9': '🀏', // 萬
+    'S1': '🀐', 'S2': '🀑', 'S3': '🀒', 'S4': '🀓', 'S5': '🀔', 'S6': '🀕', 'S7': '🀖', 'S8': '🀗', 'S9': '🀘', // 索
+    'T1': '🀙', 'T2': '🀚', 'T3': '🀛', 'T4': '🀜', 'T5': '🀝', 'T6': '🀞', 'T7': '🀟', 'T8': '🀠', 'T9': '🀡', // 筒
+    'F1': '🀀', 'F2': '🀁', 'F3': '🀂', 'F4': '🀃', // 東南西北
+    'J1': '🀄', 'J2': '🀅', 'J3': '🀆', // 中發白
+};
+
+// 牌的排序權重
+const SUIT_ORDER = { 'W': 1, 'T': 2, 'S': 3, 'F': 4, 'J': 5 };
+
+// 明星角色設定
+const CHARACTERS = [
+    { name: '憲哥', avatar: '🤵🏼', style: 'text-orange-400', 
+      quotes: { 
+          draw: ["嘿嘿！見鬼啦！", "這牌真是太銷魂了！", "哎呀，差一點！"], 
+          discard: ["隨便打啦！", "這張沒用了", "嫂子賣餃子！"], 
+          win: ["我是Local King！贏啦！", "哇哈哈哈！給錢給錢！"],
+          lose: ["太瞎了吧！", "今天手氣真背！"]
+      }
+    },
+    { name: '乃哥', avatar: '👨🏻‍💼', style: 'text-blue-400', 
+      quotes: { 
+          draw: ["不要吵我思考！", "牌怎麼這麼爛！", "快點啦！"], 
+          discard: ["你懂不懂規矩啊！", "這張你敢要？", "隨便出啦！"], 
+          win: ["看吧！這就是實力！", "服不服氣啊！"],
+          lose: ["不錄了！不錄了！", "脾氣都上來了！", "這發牌員有問題！"]
+      }
+    },
+    { name: '瓜哥', avatar: '🧑🏻‍💼', style: 'text-green-400', 
+      quotes: { 
+          draw: ["主委加碼！", "繼續送幸福！", "這張水喔！"], 
+          discard: ["下面一位～", "這張給你啦！", "隨便丟隨便中！"], 
+          win: ["胡啦！恭喜發財！", "太爽啦！獎金拿來！"],
+          lose: ["哎呀，可惜啊！", "下次再討回來！"]
+      }
+    },
+    { name: '豬大哥', avatar: '🧔🏻', style: 'text-yellow-400', 
+      quotes: { 
+          draw: ["林北跟你拼了！", "這什麼鬼牌！", "好牌快來！"], 
+          discard: ["冷涼卡好！", "出這什麼牌啦！", "去你的！"], 
+          win: ["哈哈哈！贏到脫褲！", "叫我賭神啦！"],
+          lose: ["暗陰羊咧！", "輸到要跑路了！"]
+      }
+    }
+];
+
+function generateDeck() {
+    let deck = [];
+    Object.keys(TILE_MAP).forEach(id => {
+        for (let i = 0; i < 4; i++) {
+            deck.push({ id, uniqueId: `${id}-${i}`, symbol: TILE_MAP[id] });
+        }
+    });
+    // 洗牌
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+}
+
+function sortHand(hand) {
+    return [...hand].sort((a, b) => {
+        const typeA = a.id[0], typeB = b.id[0];
+        if (SUIT_ORDER[typeA] !== SUIT_ORDER[typeB]) {
+            return SUIT_ORDER[typeA] - SUIT_ORDER[typeB];
+        }
+        return parseInt(a.id[1]) - parseInt(b.id[1]);
+    });
+}
+
+// 核心：判定 17 張牌是否胡牌 (5組面子 + 1對將)
+// 面子 = 順子(如萬123) 或 刻子(如東東東)
+function checkHu(tiles) {
+    if (tiles.length % 3 !== 2) return false;
+    
+    let counts = {};
+    for (let t of tiles) counts[t.id] = (counts[t.id] || 0) + 1;
+
+    let uniqueTiles = Object.keys(counts);
+
+    // 嘗試將每個>=2的牌當作「將牌」(眼睛)
+    for (let pair of uniqueTiles) {
+        if (counts[pair] >= 2) {
+            let tempCounts = { ...counts };
+            tempCounts[pair] -= 2;
+            if (checkMelds(tempCounts, tiles.length - 2)) return true;
+        }
+    }
+    return false;
+}
+
+// 遞迴檢查是否能全部分成面子
+function checkMelds(counts, remaining) {
+    if (remaining === 0) return true;
+    
+    // 找出第一個還有的牌
+    let firstTile = Object.keys(counts).find(k => counts[k] > 0);
+    if (!firstTile) return true;
+
+    // 嘗試刻子 (碰)
+    if (counts[firstTile] >= 3) {
+        counts[firstTile] -= 3;
+        if (checkMelds(counts, remaining - 3)) {
+            counts[firstTile] += 3; 
+            return true;
+        }
+        counts[firstTile] += 3;
+    }
+
+    // 嘗試順子 (吃) - 只有萬筒索可以吃
+    let type = firstTile[0]; 
+    let num = parseInt(firstTile[1]);
+    if (type !== 'F' && type !== 'J' && num <= 7) {
+        let t2 = type + (num + 1);
+        let t3 = type + (num + 2);
+        if (counts[t2] > 0 && counts[t3] > 0) {
+            counts[firstTile]--; counts[t2]--; counts[t3]--;
+            if (checkMelds(counts, remaining - 3)) {
+                counts[firstTile]++; counts[t2]++; counts[t3]++;
+                return true;
+            }
+            counts[firstTile]++; counts[t2]++; counts[t3]++;
+        }
+    }
+    return false;
+}
+
+// ==========================================
+// 顯示元件
+// ==========================================
+
+const MahjongTile = ({ tile, isSelected, onClick, className = '', isFaceDown = false, isDiscard = false }) => {
+    if (isFaceDown) {
+        return (
+            <div className={`w-8 h-12 sm:w-10 sm:h-14 rounded bg-green-700 border-2 border-green-800 shadow-[2px_2px_0px_#14532d] flex-shrink-0 ${className}`}></div>
+        );
+    }
+
+    const isRed = tile.id.startsWith('W') || tile.id === 'J1'; // 萬跟紅中帶紅字
+    const isGreen = tile.id.startsWith('S') || tile.id === 'J2'; // 索跟發財帶綠字
+
+    return (
+        <div onClick={onClick} 
+             className={`relative bg-[#f4f4f0] rounded border border-gray-300 flex items-center justify-center flex-shrink-0 transition-transform select-none
+             ${onClick ? 'cursor-pointer hover:-translate-y-1' : ''} 
+             ${isSelected ? '-translate-y-4 shadow-xl ring-2 ring-yellow-400' : 'shadow-[1px_3px_0px_#9ca3af]'} 
+             ${isDiscard ? 'w-8 h-10 sm:w-10 sm:h-12 text-2xl sm:text-3xl' : 'w-10 h-14 sm:w-12 sm:h-16 text-4xl sm:text-5xl'} 
+             ${isRed ? 'text-red-600' : isGreen ? 'text-green-700' : 'text-gray-800'} 
+             ${className}`}>
+            <span className="leading-none drop-shadow-sm">{tile.symbol}</span>
+        </div>
+    );
+};
+
+const PlayerAvatar = ({ player, isTurn, bubble, isSelf }) => {
+    return (
+        <div className={`relative flex flex-col items-center justify-center p-2 rounded-xl transition-all ${isTurn ? 'bg-yellow-500/20 ring-2 ring-yellow-400' : 'bg-black/20'}`}>
+            <div className={`text-4xl sm:text-5xl drop-shadow-lg ${isTurn ? 'animate-bounce' : ''}`}>{player.avatar}</div>
+            
+            {bubble && (
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-gray-900 font-bold text-xs px-3 py-1.5 rounded-xl shadow-xl whitespace-nowrap z-50 animate-pulse border-2 border-gray-200">
+                    {bubble}
+                    <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rotate-45 border-b-2 border-r-2 border-gray-200"></div>
+                </div>
+            )}
+            
+            <div className={`text-xs sm:text-sm font-bold mt-1 ${isSelf ? 'text-white' : player.style}`}>{player.name}</div>
+            {!isSelf && (
+                <div className="flex items-center gap-1 mt-1 text-[10px] text-white/70">
+                    🀫 x {player.hand.length}
+                </div>
+            )}
+        </div>
+    );
+};
+
+// ==========================================
+// 主遊戲元件
+// ==========================================
+
+export default function App() {
+    const [gameState, setGameState] = useState('menu'); // menu, playing, gameover
+    const [deck, setDeck] = useState([]);
+    const [players, setPlayers] = useState([]);
+    const [turn, setTurn] = useState(0); // 0是玩家, 123是AI
+    const [dealer, setDealer] = useState(0);
+    const [selectedTileId, setSelectedTileId] = useState(null);
+    const [messages, setMessages] = useState([]);
+    const [bubbles, setBubbles] = useState({});
+    const [interruption, setInterruption] = useState(null); // { tile, fromPlayer, actions: ['pong', 'hu'] }
+    const [winner, setWinner] = useState(null);
+    const [toast, setToast] = useState('');
+
+    const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2000); };
+    const addMessage = (msg) => setMessages(prev => [...prev.slice(-4), msg]); 
+
+    const showBubble = (pIndex, text) => {
+        setBubbles(prev => ({ ...prev, [pIndex]: text }));
+        setTimeout(() => setBubbles(prev => ({ ...prev, [pIndex]: null })), 3000);
+    };
+
+    // 播放角色台詞
+    const playQuote = (pIndex, type) => {
+        if (pIndex === 0) return; // 玩家不播台詞
+        const char = CHARACTERS[pIndex - 1]; // 因為 0 是玩家
+        const quotes = char.quotes[type];
+        if (quotes && Math.random() > 0.4) {
+            showBubble(pIndex, quotes[Math.floor(Math.random() * quotes.length)]);
+        }
+    };
+
+    const initGame = () => {
+        const newDeck = generateDeck();
+        let newPlayers = [
+            { id: 0, name: '你 (玩家)', avatar: '🧑🏻', style: 'text-white', hand: [], discards: [], melds: [] },
+            ...CHARACTERS.slice(0, 3).sort(() => Math.random() - 0.5).map((c, i) => ({ 
+                id: i + 1, name: c.name, avatar: c.avatar, style: c.style, hand: [], discards: [], melds: [], quotes: c.quotes 
+            }))
+        ];
+
+        // 發牌 (莊家17張，其餘16張)
+        let currentDealer = Math.floor(Math.random() * 4);
+        for (let i = 0; i < 4; i++) {
+            let numCards = i === currentDealer ? 17 : 16;
+            newPlayers[i].hand = sortHand(newDeck.splice(0, numCards));
+        }
+
+        setDeck(newDeck);
+        setPlayers(newPlayers);
+        setDealer(currentDealer);
+        setTurn(currentDealer);
+        setWinner(null);
+        setInterruption(null);
+        setSelectedTileId(null);
+        setMessages([`遊戲開始！${newPlayers[currentDealer].name} 是莊家。`]);
+        setGameState('playing');
+        setBubbles({});
+    };
+
+    // 玩家主動打牌
+    const handleDiscard = () => {
+        if (turn !== 0 || interruption || winner !== null) return;
+        if (!selectedTileId) return showToast("請先選擇一張牌！");
+        if (players[0].hand.length % 3 !== 2) return showToast("還沒輪到你摸牌！"); // 應該要有17/14張才能打
+
+        const tileIndex = players[0].hand.findIndex(t => t.uniqueId === selectedTileId);
+        const discardedTile = players[0].hand[tileIndex];
         
-        body { 
-            margin: 0; 
-            background: #000; 
-            overflow: hidden; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            height: 100vh;
-            width: 100vw;
-        }
+        executeDiscard(0, discardedTile);
+    };
 
-        .game-wrapper {
-            height: 100%;
-            width: 100%;
-            background: linear-gradient(to bottom, #1e3a8a 0%, #3b82f6 30%, #064e3b 100%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            position: relative;
-        }
-
-        /* 3D 牌桌佈局 */
-        .table-area {
-            perspective: 1200px;
-            width: 100%;
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-top: -5%;
-        }
-
-        .mahjong-table {
-            width: 96vw;
-            height: 55vh;
-            background: radial-gradient(circle, #2d5a41 0%, #0f3d24 100%);
-            border: 10px solid #5d3a1a;
-            border-radius: 40px;
-            transform: rotateX(30deg);
-            box-shadow: 0 40px 80px rgba(0,0,0,0.7), inset 0 0 60px rgba(0,0,0,0.5);
-            position: relative;
-            display: flex;
-            flex-wrap: wrap;
-            align-content: center;
-            justify-content: center;
-            padding: 30px;
-        }
-
-        .npc-box {
-            position: absolute;
-            z-index: 50;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .npc-avatar {
-            width: 75px;
-            height: 75px;
-            border-radius: 15px;
-            border: 3px solid #fbbf24;
-            background: #fff;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
-        }
-
-        /* --- 麻將牌 視覺升級 --- */
-        .mj-tile {
-            font-family: 'Noto Serif TC', serif;
-            background: #fff;
-            border-radius: 4px;
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            user-select: none;
-            /* 模擬麻將的綠色背板 */
-            box-shadow: 
-                0 1px 0 #ccc,
-                0 2px 0 #bbb,
-                0 3px 0 #aaa,
-                0 4px 0 #065f46; /* 綠底 */
-        }
+    // 執行打牌邏輯
+    const executeDiscard = (pIndex, tile) => {
+        let newPlayers = [...players];
         
-        /* 手牌：極大化處理 */
-        .player-tile {
-            width: calc(100vw / 17.5); /* 寬度略微加大 */
-            max-width: 46px;
-            height: calc(1.45 * calc(100vw / 17.5));
-            max-height: 66px;
-            font-size: calc(100vw / 18); /* 字體極大化 */
-            margin: 0 1px;
-            font-weight: 900;
+        // 移除手牌
+        newPlayers[pIndex].hand = newPlayers[pIndex].hand.filter(t => t.uniqueId !== tile.uniqueId);
+        newPlayers[pIndex].hand = sortHand(newPlayers[pIndex].hand);
+        
+        // 加入廢牌堆
+        newPlayers[pIndex].discards.push(tile);
+        setPlayers(newPlayers);
+        setSelectedTileId(null);
+        
+        addMessage(`${newPlayers[pIndex].name} 打出了 ${tile.symbol}`);
+        if (pIndex !== 0) playQuote(pIndex, 'discard');
+
+        // 檢查是否有人能胡或碰 (MVP版本只檢查玩家 0 是否能對 AI 的牌反應)
+        if (pIndex !== 0) {
+            checkPlayerInterruption(tile, pIndex);
+        } else {
+            // 玩家打的，直接換下家 (簡化：AI不會碰/胡玩家的牌)
+            proceedToNextTurn((pIndex + 1) % 4);
+        }
+    };
+
+    // 檢查玩家 0 是否可以碰或胡
+    const checkPlayerInterruption = (tile, fromPlayer) => {
+        let p0Hand = players[0].hand;
+        let possibleActions = [];
+
+        // 檢查胡牌 (加上這張牌是否能胡)
+        if (checkHu([...p0Hand, tile])) {
+            possibleActions.push('hu');
         }
 
-        .player-tile.selected {
-            transform: translateY(-20px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5), 0 4px 0 #fbbf24;
-            z-index: 10;
+        // 檢查碰牌 (是否有兩張相同的)
+        const sameTiles = p0Hand.filter(t => t.id === tile.id);
+        if (sameTiles.length >= 2) {
+            possibleActions.push('pong');
         }
 
-        /* 桌面牌：也適度加大 */
-        .discard-tile {
-            width: 26px;
-            height: 36px;
-            font-size: 22px;
-            margin: 2px;
-            box-shadow: 0 1px 0 #ccc, 0 2px 0 #065f46;
+        if (possibleActions.length > 0) {
+            setInterruption({ tile, fromPlayer, actions: possibleActions });
+        } else {
+            proceedToNextTurn((fromPlayer + 1) % 4);
+        }
+    };
+
+    // 推進回合與摸牌
+    const proceedToNextTurn = (nextTurnIndex) => {
+        if (deck.length === 0) {
+            setMessages(prev => [...prev, "流局！牌堆已摸完。"]);
+            setGameState('gameover');
+            return;
         }
 
-        .bottom-ui {
-            width: 100%;
-            background: linear-gradient(to top, rgba(0,0,0,1) 70%, rgba(0,0,0,0) 100%);
-            padding: 10px 4px calc(10px + env(safe-area-inset-bottom));
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            z-index: 100;
+        let newDeck = [...deck];
+        let newPlayers = [...players];
+        
+        // 摸牌
+        const drawnTile = newDeck.shift();
+        newPlayers[nextTurnIndex].hand.push(drawnTile);
+        newPlayers[nextTurnIndex].hand = sortHand(newPlayers[nextTurnIndex].hand);
+        
+        setDeck(newDeck);
+        setPlayers(newPlayers);
+        setTurn(nextTurnIndex);
+
+        if (nextTurnIndex !== 0) {
+            playQuote(nextTurnIndex, 'draw');
+        } else {
+            addMessage(`輪到你了，摸到了 ${drawnTile.symbol}`);
+            // 檢查玩家自摸
+            if (checkHu(newPlayers[0].hand)) {
+                showToast("🔥 你可以自摸啦！ 🔥");
+            }
+        }
+    };
+
+    // AI 邏輯
+    useEffect(() => {
+        if (gameState !== 'playing' || winner !== null || interruption) return;
+
+        let timer;
+        if (turn !== 0) {
+            // AI 的回合
+            timer = setTimeout(() => {
+                let aiHand = players[turn].hand;
+                
+                // 1. 檢查是否自摸
+                if (checkHu(aiHand)) {
+                    declareWin(turn, true);
+                    return;
+                }
+
+                // 2. 隨機出牌 (優先打單張風牌/字牌)
+                let discardTile = aiHand[Math.floor(Math.random() * aiHand.length)];
+                
+                // 簡單AI: 尋找沒有成對的字牌
+                const counts = {};
+                aiHand.forEach(t => counts[t.id] = (counts[t.id] || 0) + 1);
+                const singles = aiHand.filter(t => counts[t.id] === 1 && (t.id.startsWith('F') || t.id.startsWith('J')));
+                
+                if (singles.length > 0) {
+                    discardTile = singles[0];
+                }
+
+                executeDiscard(turn, discardTile);
+
+            }, 1500); // 模擬思考時間
         }
 
-        .status-bar {
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 15px;
-            font-size: 13px;
-            color: #fbbf24;
-            font-weight: bold;
+        return () => clearTimeout(timer);
+    }, [turn, gameState, winner, interruption]);
+
+
+    // 處理玩家中斷動作 (碰 / 胡 / 過)
+    const handleInterruption = (action) => {
+        const { tile, fromPlayer } = interruption;
+        let newPlayers = [...players];
+        
+        if (action === 'pass') {
+            setInterruption(null);
+            proceedToNextTurn((fromPlayer + 1) % 4);
+            return;
         }
 
-        .btn-action {
-            background: linear-gradient(to bottom, #fcd34d, #d97706);
-            border: 2px solid #78350f;
-            color: #000;
-            padding: 6px 24px;
-            border-radius: 8px;
-            font-weight: 900;
-            text-shadow: 0 1px 0 rgba(255,255,255,0.4);
-            box-shadow: 0 4px 0 #78350f;
+        if (action === 'hu') {
+            newPlayers[0].hand.push(tile);
+            // 將放槍者的廢牌移除最後一張
+            newPlayers[fromPlayer].discards.pop();
+            setPlayers(newPlayers);
+            setInterruption(null);
+            declareWin(0, false, fromPlayer);
+            return;
         }
-        .btn-action:active {
-            transform: translateY(2px);
-            box-shadow: 0 2px 0 #78350f;
+
+        if (action === 'pong') {
+            // 移除手牌中兩張一樣的
+            const sameTiles = newPlayers[0].hand.filter(t => t.id === tile.id);
+            const keepTiles = newPlayers[0].hand.filter(t => t.id !== tile.id);
+            
+            newPlayers[0].hand = keepTiles;
+            newPlayers[fromPlayer].discards.pop(); // 拿走別人打的牌
+            
+            newPlayers[0].melds.push({ type: 'pong', tiles: [sameTiles[0], sameTiles[1], tile] });
+            
+            setPlayers(newPlayers);
+            setInterruption(null);
+            setTurn(0); // 碰完換玩家打牌
+            addMessage(`你碰了 ${tile.symbol}！請打出一張牌。`);
         }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+    };
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+    // 宣告勝利
+    const declareWin = (winnerIndex, isSelfDraw, loserIndex = -1) => {
+        setWinner(winnerIndex);
+        setGameState('gameover');
+        
+        if (winnerIndex === 0) {
+            playQuote(1, 'lose'); playQuote(2, 'lose'); playQuote(3, 'lose');
+            addMessage(`🎉 恭喜！你${isSelfDraw ? '自摸' : '胡'}啦！`);
+        } else {
+            playQuote(winnerIndex, 'win');
+            addMessage(`😢 ${players[winnerIndex].name} ${isSelfDraw ? '自摸' : '胡'}了！`);
+        }
+    };
 
-        const TILE_SYMBOLS = ['🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏','🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡','🀐','🀑','🀒','🀓','🀔','🀕','🀖','🀗','🀘','🀀','🀁','🀂','🀃','🀄','🀅','🀆'];
+    // 玩家主動宣告自摸
+    const handleSelfHu = () => {
+        if (turn !== 0 || players[0].hand.length % 3 !== 2) return;
+        if (checkHu(players[0].hand)) {
+            declareWin(0, true);
+        } else {
+            showToast("牌型不符合胡牌條件喔！(詐胡是不允許的)");
+        }
+    };
 
-        const App = () => {
-            const [deck, setDeck] = useState([]);
-            const [players, setPlayers] = useState([
-                { name: '我是七六', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me' },
-                { name: '憲哥', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' },
-                { name: '美鳳姐', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily' },
-                { name: '乃哥', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka' }
-            ]);
-            const [turn, setTurn] = useState(0);
-            const [selectedIdx, setSelectedIdx] = useState(null);
 
-            const initGame = () => {
-                let d = []; for(let i=0; i<34; i++) for(let j=0; j<4; j++) d.push(i);
-                d.sort(() => Math.random() - 0.5);
-                const p = [...players];
-                p.forEach(player => {
-                    player.hand = d.splice(0, 16).sort((a,b)=>a-b);
-                    player.discards = [];
-                });
-                setDeck(d); setPlayers(p); setTurn(0);
-                drawTile(0, p, d);
-            };
+    // 渲染 UI
+    if (gameState === 'menu') {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen w-screen bg-green-900 text-white p-4 overflow-hidden relative font-sans">
+                {/* 背景裝飾 */}
+                <div className="absolute inset-0 opacity-10 flex items-center justify-center text-[20rem] pointer-events-none">🀄</div>
+                
+                <h1 className="text-5xl sm:text-7xl font-extrabold mb-4 tracking-widest text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-yellow-600 drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)] filter">
+                    新明星三缺一
+                </h1>
+                <p className="text-xl sm:text-2xl font-bold mb-12 text-yellow-400 drop-shadow-md">✨ 正宗台灣 16 張麻將 ✨</p>
+                
+                <div className="grid grid-cols-4 gap-4 mb-12">
+                    {CHARACTERS.map((c, i) => (
+                        <div key={i} className="flex flex-col items-center bg-black/40 p-4 rounded-2xl border border-white/20 shadow-xl">
+                            <span className="text-5xl mb-2">{c.avatar}</span>
+                            <span className={`font-bold ${c.style}`}>{c.name}</span>
+                        </div>
+                    ))}
+                </div>
 
-            const drawTile = (idx, curP, curD) => {
-                if (curD.length === 0) return;
-                const nextD = [...curD];
-                const tile = nextD.shift();
-                const nextP = [...curP];
-                nextP[idx].hand.push(tile);
-                setDeck(nextD); setPlayers(nextP);
-                if (idx !== 0) setTimeout(() => discard(idx, nextP[idx].hand.length-1, nextP, nextD), 1200);
-            };
+                <button onClick={initGame} className="px-12 py-4 bg-gradient-to-r from-yellow-500 to-yellow-600 text-red-900 rounded-full text-3xl font-black shadow-[0_8px_0_#9a3412] active:shadow-[0_0px_0_#9a3412] active:translate-y-2 transition-all hover:brightness-110">
+                    摸八圈去！
+                </button>
+            </div>
+        );
+    }
 
-            const discard = (idx, tIdx, curP, curD) => {
-                const nextP = [...curP];
-                const tile = nextP[idx].hand.splice(tIdx, 1)[0];
-                nextP[idx].discards.push(tile);
-                nextP[idx].hand.sort((a,b)=>a-b);
-                setPlayers(nextP); setSelectedIdx(null);
-                const nextTurn = (idx + 1) % 4;
-                setTurn(nextTurn);
-                setTimeout(() => drawTile(nextTurn, nextP, curD), 600);
-            };
-
-            useEffect(() => { initGame(); }, []);
-
-            return (
-                <div className="game-wrapper">
-                    {/* 上方 NPC */}
-                    <div className="npc-box top-4">
-                        <img src={players[2].avatar} className={`npc-avatar ${turn===2?'ring-4 ring-yellow-400':''}`} />
-                        <span className="text-xs text-white font-bold mt-1 drop-shadow-md">{players[2].name}</span>
+    return (
+        <div className="w-full h-screen bg-[#1a472a] relative overflow-hidden flex flex-col font-sans select-none">
+            {/* 桌面材質紋理 */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#205b36_0%,_#12321d_100%)] opacity-90 pointer-events-none"></div>
+            
+            {/* 左上角資訊 */}
+            <div className="absolute top-4 left-4 bg-black/60 p-3 rounded-xl text-white text-xs sm:text-sm z-30 shadow-lg border border-green-800 backdrop-blur-sm">
+                <div className="font-bold text-yellow-400 mb-2 border-b border-white/20 pb-1 flex justify-between">
+                    <span>剩餘牌數：{deck.length}</span>
+                </div>
+                {players.map((p, i) => (
+                    <div key={i} className={`flex items-center justify-between w-32 mb-1 ${i === dealer ? 'text-yellow-300' : 'text-gray-300'}`}>
+                        <span>{i === dealer ? '莊 ' : ''}{p.name}</span>
+                        <span className="text-[10px] opacity-70 border border-current px-1 rounded bg-black/50">🀫 {p.hand.length}</span>
                     </div>
+                ))}
+            </div>
 
-                    {/* 左右 NPC */}
-                    <div className="npc-box left-4 top-[35%]">
-                        <img src={players[1].avatar} className={`npc-avatar ${turn===1?'ring-4 ring-yellow-400':''}`} />
-                        <span className="text-xs text-white font-bold mt-1 drop-shadow-md">{players[1].name}</span>
-                    </div>
-                    <div className="npc-box right-4 top-[35%]">
-                        <img src={players[3].avatar} className={`npc-avatar ${turn===3?'ring-4 ring-yellow-400':''}`} />
-                        <span className="text-xs text-white font-bold mt-1 drop-shadow-md">{players[3].name}</span>
-                    </div>
+            {/* 中間對話框記錄 */}
+            <div className="absolute top-1/4 left-4 w-48 text-xs bg-black/30 p-2 rounded-lg text-white/80 max-h-32 overflow-hidden pointer-events-none z-20 hidden md:block border border-white/10">
+                {messages.map((m, i) => <div key={i} className="mb-1">{m}</div>)}
+            </div>
 
-                    {/* 牌桌區 */}
-                    <div className="table-area">
-                        <div className="mahjong-table">
-                            <div className="flex flex-wrap justify-center content-center w-full h-full max-w-[80%]">
-                                {players.flatMap(p => p.discards).map((t, i) => (
-                                    <div key={i} className={`mj-tile discard-tile ${t<=8||t===31?'text-red-600':'text-green-800'}`}>{TILE_SYMBOLS[t]}</div>
-                                ))}
+            {toast && (
+                <div className="absolute top-1/3 left-1/2 -translate-x-1/2 bg-red-600/90 backdrop-blur-sm text-white px-8 py-3 rounded-full shadow-2xl z-[80] animate-bounce text-lg font-bold border-2 border-yellow-400">
+                    {toast}
+                </div>
+            )}
+
+            {/* AI 玩家區域 (上方 = 對家, 左方 = 上家, 右方 = 下家) */}
+            {/* P2 上方 */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
+                <PlayerAvatar player={players[2]} isTurn={turn === 2} bubble={bubbles[2]} />
+                <div className="flex mt-2">
+                    {players[2].discards.slice(-8).map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-ml-1" />)}
+                </div>
+            </div>
+
+            {/* P1 左方 */}
+            <div className="absolute top-1/2 -translate-y-1/2 left-4 flex flex-row items-center z-20">
+                <PlayerAvatar player={players[1]} isTurn={turn === 1} bubble={bubbles[1]} />
+                <div className="flex flex-col ml-4">
+                    {players[1].discards.slice(-6).map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-mt-2" />)}
+                </div>
+            </div>
+
+            {/* P3 右方 */}
+            <div className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-row-reverse items-center z-20">
+                <PlayerAvatar player={players[3]} isTurn={turn === 3} bubble={bubbles[3]} />
+                <div className="flex flex-col mr-4">
+                    {players[3].discards.slice(-6).map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-mt-2" />)}
+                </div>
+            </div>
+
+            {/* 中央牌海 (自己的廢牌) */}
+            <div className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-10 flex flex-wrap justify-center gap-1 opacity-80 pointer-events-none px-12">
+                 {players[0].discards.map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="shadow-none" />)}
+            </div>
+
+            {/* 中斷互動選單 (碰、胡) */}
+            {interruption && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-black/80 backdrop-blur-md p-6 rounded-2xl border-2 border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)] flex flex-col items-center animate-pulse">
+                    <p className="text-white mb-4 text-lg font-bold">{players[interruption.fromPlayer].name} 打出了：</p>
+                    <MahjongTile tile={interruption.tile} className="mb-6 scale-125" />
+                    <div className="flex gap-4">
+                        {interruption.actions.includes('hu') && (
+                            <button onClick={() => handleInterruption('hu')} className="px-6 py-2 bg-red-600 text-white font-bold rounded shadow-lg hover:bg-red-500 text-xl">胡！</button>
+                        )}
+                        {interruption.actions.includes('pong') && (
+                            <button onClick={() => handleInterruption('pong')} className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow-lg hover:bg-blue-500 text-xl">碰</button>
+                        )}
+                        <button onClick={() => handleInterruption('pass')} className="px-6 py-2 bg-gray-500 text-white font-bold rounded shadow-lg hover:bg-gray-400 text-xl">過</button>
+                    </div>
+                </div>
+            )}
+
+            {/* 玩家區域 (底部) */}
+            <div className={`absolute bottom-0 left-0 w-full flex flex-col items-center pb-6 pt-10 transition-colors z-40 ${turn === 0 ? 'bg-gradient-to-t from-yellow-500/20 to-transparent' : ''}`}>
+                
+                {/* 玩家控制列 */}
+                <div className="flex items-center justify-between w-full px-4 max-w-4xl mx-auto mb-4 h-12">
+                    <div className="flex items-center gap-4">
+                        <PlayerAvatar player={players[0]} isTurn={turn === 0} isSelf />
+                        {turn === 0 && !interruption && winner === null && (
+                            <div className="flex gap-3">
+                                <button onClick={handleDiscard} className={`px-6 py-2.5 rounded-full font-bold text-sm sm:text-base shadow-lg transition-transform ${selectedTileId ? 'bg-blue-600 text-white hover:bg-blue-500 active:scale-95' : 'bg-gray-500 text-gray-300 cursor-not-allowed opacity-50'}`}>
+                                    打牌 (出)
+                                </button>
+                                {players[0].hand.length % 3 === 2 && (
+                                    <button onClick={handleSelfHu} className="px-6 py-2.5 bg-red-600 hover:bg-red-500 active:scale-95 text-white rounded-full shadow-[0_0_15px_rgba(220,38,38,0.8)] font-bold text-sm sm:text-base animate-pulse">
+                                        自摸！
+                                    </button>
+                                )}
                             </div>
-                            <div className="absolute top-4 left-6 text-sm text-yellow-400 font-black drop-shadow-md">剩餘: {deck.length}</div>
-                        </div>
+                        )}
+                        {turn !== 0 && winner === null && !interruption && (
+                            <div className="text-yellow-400 font-bold animate-pulse px-4 py-2 bg-black/40 rounded-full text-sm">
+                                正在等待其他人打牌...
+                            </div>
+                        )}
                     </div>
+                </div>
 
-                    {/* 底部 UI */}
-                    <div className="bottom-ui">
-                        <div className="flex gap-6 mb-4">
-                            {turn === 0 && (
-                                <>
-                                    <button onClick={() => selectedIdx !== null && discard(0, selectedIdx, players, deck)} 
-                                        className="btn-action">出 牌</button>
-                                    <button className="btn-action grayscale opacity-50">胡 牌</button>
-                                </>
-                            )}
-                        </div>
-                        
-                        <div className="flex justify-center w-full px-2 mb-4">
-                            {players[0].hand.map((id, i) => (
-                                <div key={i} 
-                                    onClick={() => turn === 0 && setSelectedIdx(i)}
-                                    className={`mj-tile player-tile ${id<=8||id===31?'text-red-600':'text-green-800'} ${selectedIdx===i?'selected':''}`}>
-                                    {TILE_SYMBOLS[id]}
+                {/* 玩家手牌 */}
+                <div className="relative w-full max-w-5xl mx-auto flex items-end justify-center px-2 pb-2 h-24">
+                    
+                    {/* 面子區 (已碰/吃) */}
+                    {players[0].melds.length > 0 && (
+                        <div className="flex gap-2 mr-6 bg-black/30 p-2 rounded-xl">
+                            {players[0].melds.map((meld, idx) => (
+                                <div key={idx} className="flex">
+                                    {meld.tiles.map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-ml-1 border-yellow-600" />)}
                                 </div>
                             ))}
                         </div>
+                    )}
 
-                        <div className="status-bar">
-                            <div className="flex items-center gap-2">
-                                <span className="bg-green-600 text-white px-1 rounded">東</span>
-                                <span>我是七六</span>
-                            </div>
-                            <div className="flex gap-4">
-                                <span>💰 9,930</span>
-                                <span className="text-white/70 font-normal">Lv.12 麻將入門</span>
-                            </div>
-                        </div>
+                    {/* 手牌區 */}
+                    <div className="flex items-end justify-center bg-black/20 p-2 rounded-2xl border-b-4 border-green-900 shadow-2xl">
+                        {players[0].hand.map((tile, idx) => {
+                            // 判斷是否為剛摸進來的牌 (最後一張，且數量為 3n+2)
+                            const isDrawnTile = (idx === players[0].hand.length - 1) && (players[0].hand.length % 3 === 2);
+                            return (
+                                <div key={tile.uniqueId} className={`transition-all duration-200 ${isDrawnTile ? 'ml-4 sm:ml-6' : '-ml-1 sm:-ml-2'}`}>
+                                    <MahjongTile 
+                                        tile={tile} 
+                                        isSelected={selectedTileId === tile.uniqueId} 
+                                        onClick={() => turn === 0 && !interruption ? setSelectedTileId(selectedTileId === tile.uniqueId ? null : tile.uniqueId) : null} 
+                                    />
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
-            );
-        };
+            </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+            {/* 結算畫面 */}
+            {gameState === 'gameover' && (
+                <div className="absolute inset-0 bg-black/90 backdrop-blur-sm z-[100] flex flex-col items-center justify-center p-4">
+                    <h1 className={`text-6xl font-extrabold mb-8 animate-bounce ${winner === 0 ? 'text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,1)]' : 'text-gray-300'}`}>
+                        {winner === 0 ? '🏆 你贏啦！胡牌！' : winner !== null ? `😢 ${players[winner].name} 胡牌了！` : '🤝 流局！沒人胡牌'}
+                    </h1>
+                    
+                    {winner !== null && (
+                        <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl border border-gray-600 mb-8 max-w-3xl flex flex-col items-center">
+                            <p className="text-gray-400 mb-4 font-bold tracking-widest text-lg">勝者手牌</p>
+                            
+                            <div className="flex flex-wrap gap-4 justify-center mb-6">
+                                {players[winner].melds.map((meld, idx) => (
+                                    <div key={`m-${idx}`} className="flex border-b-2 border-yellow-500 pb-1">
+                                        {meld.tiles.map((t, i) => <MahjongTile key={`mt-${i}`} tile={t} />)}
+                                    </div>
+                                ))}
+                                <div className="flex bg-black/30 p-2 rounded-xl border border-white/10">
+                                    {players[winner].hand.map((t, i) => <MahjongTile key={`h-${i}`} tile={t} className="-ml-1 sm:-ml-2" />)}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex space-x-6">
+                        <button onClick={initGame} className="px-10 py-4 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-white rounded-full text-2xl font-bold shadow-[0_6px_0_#166534] active:translate-y-2 active:shadow-none transition-all">
+                            再來一局
+                        </button>
+                        <button onClick={() => setGameState('menu')} className="px-8 py-4 bg-gray-700 hover:bg-gray-600 text-white rounded-full text-xl font-bold shadow-[0_6px_0_#374151] active:translate-y-2 active:shadow-none transition-all">
+                            回首頁
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
