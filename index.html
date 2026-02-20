@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Shield, Volume2, Settings, Trophy, Coins, MessageCircle } from 'lucide-react';
+import { Shield, Volume2, Settings, Trophy, Coins, MessageCircle, RefreshCw, Smartphone } from 'lucide-react';
 
-// ==========================================
-// 1. 核心胡牌演算法 (Mahjong16Solver)
-// ==========================================
+/**
+ * ==========================================
+ * 1. 核心胡牌演算法 (Mahjong16Solver)
+ * ==========================================
+ */
 class Mahjong16Solver {
   constructor() {
     this.HONOR_START = 27;
@@ -43,6 +45,8 @@ class Mahjong16Solver {
       if (counts[i] > 0) { first = i; break; }
     }
     if (first === -1) return true;
+
+    // 刻子
     if (counts[first] >= 3) {
       counts[first] -= 3;
       if (this._canFormMelds(counts)) {
@@ -52,6 +56,8 @@ class Mahjong16Solver {
       }
       counts[first] += 3;
     }
+
+    // 順子
     if (first < this.HONOR_START) {
       const suitBase = Math.floor(first / 9) * 9;
       if (first + 2 < suitBase + 9 && counts[first + 1] > 0 && counts[first + 2] > 0) {
@@ -69,9 +75,11 @@ class Mahjong16Solver {
   }
 }
 
-// ==========================================
-// 2. 常數設定
-// ==========================================
+/**
+ * ==========================================
+ * 2. 常數與資源
+ * ==========================================
+ */
 const TILE_SYMBOLS = [
   '🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏', // 萬 0-8
   '🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡', // 筒 9-17
@@ -86,47 +94,41 @@ const CHARACTERS = [
   { name: '美鳳姐', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily', pitch: 1.5, quotes: { discard: "這張水喔～", win: "哎呀，真是不好意思～", draw: "手氣不錯呢。" } }
 ];
 
-// ==========================================
-// 3. 語音引擎
-// ==========================================
 const speak = (text, pitch = 1) => {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-TW';
   utterance.pitch = pitch;
-  utterance.rate = 1.1;
+  utterance.rate = 1.2;
   window.speechSynthesis.speak(utterance);
 };
 
-// ==========================================
-// 4. 子組件
-// ==========================================
+/**
+ * ==========================================
+ * 3. 子組件
+ * ==========================================
+ */
 const CelebAvatar = ({ player, isTurn, bubble, position }) => {
   const posStyles = {
     top: "top-4 left-1/2 -translate-x-1/2",
-    left: "top-1/3 left-4",
-    right: "top-1/3 right-4"
+    left: "top-1/4 left-4",
+    right: "top-1/4 right-4"
   };
 
   return (
-    <div className={`absolute ${posStyles[position]} flex flex-col items-center z-30 transition-all duration-500`}>
+    <div className={`absolute ${posStyles[position]} flex flex-col items-center z-30 transition-all duration-500 scale-75 md:scale-100`}>
       {bubble && (
-        <div className="absolute -top-16 bg-white text-black px-4 py-2 rounded-2xl text-sm font-bold shadow-2xl animate-bounce border-2 border-slate-200 whitespace-nowrap after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-8 after:border-transparent after:border-t-white">
+        <div className="absolute -top-12 bg-white text-black px-3 py-1 rounded-xl text-xs font-bold shadow-xl animate-bounce border-2 border-slate-200 whitespace-nowrap after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-white">
           {bubble}
         </div>
       )}
       <div className={`relative ${isTurn ? 'scale-110' : 'opacity-80 scale-95'}`}>
-        <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 ${isTurn ? 'border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.6)]' : 'border-slate-400'} overflow-hidden bg-orange-100 shadow-xl transition-all`}>
+        <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 ${isTurn ? 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.6)]' : 'border-slate-500/50'} overflow-hidden bg-orange-100 shadow-xl transition-all`}>
           <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" />
         </div>
-        {isTurn && (
-          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse font-black tracking-widest">
-            THINKING
-          </div>
-        )}
       </div>
-      <div className="mt-2 bg-black/70 backdrop-blur-sm px-4 py-1 rounded-full text-yellow-400 font-bold text-xs border border-yellow-900/50 shadow-lg">
+      <div className="mt-1 bg-black/60 backdrop-blur-sm px-3 py-0.5 rounded-full text-yellow-400 font-bold text-[10px] border border-yellow-900/30">
         {player.name}
       </div>
     </div>
@@ -134,40 +136,56 @@ const CelebAvatar = ({ player, isTurn, bubble, position }) => {
 };
 
 const MahjongTile = ({ id, isSelected, onClick, isDiscard, isNew }) => {
-  const isRed = id <= 8 || id === 31; // 萬子與紅中
+  const isRed = id <= 8 || id === 31;
   return (
-    <div 
+    <button 
       onClick={onClick}
       className={`
-        relative bg-white rounded-md flex items-center justify-center cursor-pointer transition-all
-        ${isSelected ? '-translate-y-4 ring-4 ring-yellow-400 z-10' : 'hover:-translate-y-1 shadow-md'}
-        ${isDiscard ? 'w-8 h-12 text-2xl' : 'w-11 h-16 text-4xl'}
+        relative bg-white rounded-sm flex items-center justify-center transition-all active:scale-95
+        ${isSelected ? '-translate-y-3 ring-2 ring-yellow-400 z-10' : 'shadow-sm'}
+        ${isDiscard ? 'w-6 h-9 md:w-8 md:h-12 text-xl md:text-2xl' : 'w-9 h-14 md:w-11 md:h-16 text-3xl md:text-4xl'}
         ${isRed ? 'text-rose-600' : 'text-emerald-700'}
-        ${isNew ? 'animate-bounce border-blue-400' : 'border-slate-300'}
-        font-serif font-bold border-2
+        ${isNew ? 'border-blue-400 ring-1 ring-blue-200' : 'border-slate-300'}
+        font-serif font-bold border
       `}
       style={{ 
-        boxShadow: 'inset 0 -4px 0 #e2e8f0, 2px 2px 4px rgba(0,0,0,0.2)',
-        userSelect: 'none'
+        boxShadow: 'inset 0 -3px 0 #cbd5e1, 1px 1px 2px rgba(0,0,0,0.1)',
+        touchAction: 'manipulation'
       }}
     >
       {TILE_SYMBOLS[id]}
-    </div>
+    </button>
   );
 };
 
-// ==========================================
-// 5. 主程式
-// ==========================================
+/**
+ * ==========================================
+ * 4. PWA 相關標籤 (用於動態注入)
+ * ==========================================
+ */
+const PWAMeta = () => (
+  <>
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#062012" />
+    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIuaYjuifp+m6u+WwhyBQV0EiLAogICJzaG9ydF9uYW1lIjogIuaYjuifp+m6u+WwhyIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMDYyMDEyIiwKICAidGhlbWVfY29sb3IiOiAiIzA2MjAxMiIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogImh0dHBzOi8vYXBpLmRpY2ViZWFyLmNvbS83LngvYXZhdGFhYXJzL3N2Zz9zZWVkPU1haGpvbmciLAogICAgICAic2l6ZXMiOiAiMTkyeDE5MiIsCiAgICAgICJ0eXBlIjogImltYWdlL3N2Zyt4bWwiCiAgICB9CiAgXQp9" />
+  </>
+);
+
+/**
+ * ==========================================
+ * 5. 主程式
+ * ==========================================
+ */
 export default function App() {
   const solver = useMemo(() => new Mahjong16Solver(), []);
   const [deck, setDeck] = useState([]);
-  const [turn, setTurn] = useState(0); // 0: Player, 1-3: NPCs
+  const [turn, setTurn] = useState(0); 
   const [players, setPlayers] = useState(CHARACTERS.map((c, i) => ({ ...c, id: i, hand: [], discards: [] })));
   const [bubbles, setBubbles] = useState({});
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [gameMsg, setGameMsg] = useState("歡迎來到明星大對決！");
-  const [lastDiscard, setLastDiscard] = useState(null);
+  const [isGameOver, setIsGameOver] = useState(false);
 
   // 初始化遊戲
   const initGame = useCallback(() => {
@@ -177,26 +195,38 @@ export default function App() {
     }
     newDeck.sort(() => Math.random() - 0.5);
 
-    const newPlayers = [...players];
-    for (let i = 0; i < 4; i++) {
-      newPlayers[i].hand = newDeck.splice(0, 16).sort((a, b) => a - b);
-      newPlayers[i].discards = [];
-    }
+    const newPlayers = CHARACTERS.map((c, i) => ({ 
+      ...c, 
+      id: i, 
+      hand: newDeck.splice(0, 16).sort((a, b) => a - b),
+      discards: [] 
+    }));
     
     setDeck(newDeck);
     setPlayers(newPlayers);
     setTurn(0);
+    setIsGameOver(false);
+    setGameMsg("新局開始，祝你好運！");
+    
+    // 第一手摸牌
     drawTile(0, newPlayers, newDeck);
   }, []);
 
   useEffect(() => {
     initGame();
+    // 註冊 Service Worker 模擬 (PWA 必要)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        console.log('PWA Ready');
+      });
+    }
   }, []);
 
   // 摸牌邏輯
   const drawTile = (pIdx, currentPlayers, currentDeck) => {
     if (currentDeck.length === 0) {
       setGameMsg("平局！牌摸完了。");
+      setIsGameOver(true);
       return;
     }
     const tile = currentDeck[0];
@@ -207,168 +237,149 @@ export default function App() {
     setDeck(nextDeck);
     setPlayers(nextPlayers);
 
-    // 檢查摸牌後是否胡牌 (僅示範玩家或簡單邏輯)
-    if (solver.isWin(nextPlayers[pIdx].hand)) {
-      handleWin(pIdx);
-    } else {
-      if (pIdx !== 0) {
-        // AI 自動打牌
+    // AI 自動檢查與出牌
+    if (pIdx !== 0) {
+      if (solver.isWin(nextPlayers[pIdx].hand)) {
+        setTimeout(() => handleWin(pIdx), 1000);
+      } else {
         setTimeout(() => handleDiscard(pIdx, nextPlayers[pIdx].hand.length - 1), 1500);
       }
+    } else {
+      setGameMsg("換你摸牌了");
     }
   };
 
   // 打牌邏輯
   const handleDiscard = (pIdx, tileIdx) => {
+    if (isGameOver) return;
     const nextPlayers = [...players];
     const tile = nextPlayers[pIdx].hand.splice(tileIdx, 1)[0];
     nextPlayers[pIdx].discards.push(tile);
     nextPlayers[pIdx].hand.sort((a, b) => a - b);
     
-    setLastDiscard(tile);
     setPlayers(nextPlayers);
     setSelectedIdx(null);
 
-    // 說話
+    // AI 說話
     if (pIdx !== 0 && nextPlayers[pIdx].quotes) {
       const quote = nextPlayers[pIdx].quotes.discard;
       setBubbles({ [pIdx]: quote });
       speak(quote, nextPlayers[pIdx].pitch);
-      setTimeout(() => setBubbles({}), 2000);
+      setTimeout(() => setBubbles({}), 1800);
     }
 
-    // 換下一位
     const nextTurn = (pIdx + 1) % 4;
     setTurn(nextTurn);
-    setTimeout(() => drawTile(nextTurn, nextPlayers, deck), 500);
+    setTimeout(() => drawTile(nextTurn, nextPlayers, deck), 600);
   };
 
   const handleWin = (pIdx) => {
     const winner = players[pIdx];
     setGameMsg(`${winner.name} 胡牌了！`);
+    setIsGameOver(true);
     if (winner.quotes) {
       setBubbles({ [pIdx]: winner.quotes.win });
       speak(winner.quotes.win, winner.pitch);
     }
-    setTurn(-1); // 結束
+    setTurn(-1);
   };
 
   return (
-    <div className="w-full h-screen relative bg-[#062012] overflow-hidden font-sans select-none">
-      
-      {/* 背景裝飾：城市剪影 */}
-      <div className="absolute inset-0 pointer-events-none opacity-20">
-        <div className="w-full h-full bg-gradient-to-b from-emerald-900 to-transparent flex items-end justify-around px-20">
-          {[160, 240, 180, 300, 200].map((h, i) => (
-            <div key={i} style={{ height: h }} className="w-24 bg-emerald-800/40 rounded-t-xl" />
-          ))}
-        </div>
-      </div>
+    <div className="fixed inset-0 bg-[#062012] overflow-hidden font-sans select-none flex flex-col items-center justify-center">
+      <PWAMeta />
 
-      {/* 左右木質邊框模擬音響 */}
-      <div className="absolute left-0 top-0 w-12 h-full bg-gradient-to-r from-amber-950 to-amber-900 border-r-2 border-amber-800 flex flex-col items-center py-20 gap-8 shadow-2xl">
-        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
-        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
-      </div>
-      <div className="absolute right-0 top-0 w-12 h-full bg-gradient-to-l from-amber-950 to-amber-900 border-l-2 border-amber-800 flex flex-col items-center py-20 gap-8 shadow-2xl">
-        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
-        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
-      </div>
-
-      {/* 牌桌主體 */}
-      <div className="absolute inset-16 md:inset-24 bg-[#144229] rounded-[80px] border-[12px] border-amber-900 shadow-[0_0_80px_rgba(0,0,0,0.6)] overflow-hidden">
-        <div className="absolute inset-0 border-2 border-emerald-400/10 rounded-[68px]"></div>
+      {/* 牌桌區 */}
+      <div className="relative w-[95vw] h-[70vh] md:w-[85vw] md:h-[75vh] bg-[#144229] rounded-[40px] md:rounded-[80px] border-[8px] md:border-[16px] border-amber-900 shadow-2xl flex items-center justify-center">
         
-        {/* 中間 LOGO & 資訊 */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center opacity-30">
-          <Shield className="w-32 h-32 text-emerald-100" />
-          <h2 className="text-emerald-100 font-black text-2xl tracking-[1em] mt-4">明星麻將</h2>
+        {/* 中心裝飾 */}
+        <div className="absolute opacity-10 flex flex-col items-center pointer-events-none">
+          <Shield className="w-24 h-24 md:w-48 md:h-48 text-white" />
+          <h1 className="text-white text-xl md:text-4xl font-black tracking-widest mt-4">明星麻將</h1>
         </div>
 
-        {/* NPC 角色 */}
+        {/* NPC 位元 */}
         <CelebAvatar player={players[2]} isTurn={turn === 2} bubble={bubbles[2]} position="top" />
         <CelebAvatar player={players[1]} isTurn={turn === 1} bubble={bubbles[1]} position="left" />
         <CelebAvatar player={players[3]} isTurn={turn === 3} bubble={bubbles[3]} position="right" />
 
-        {/* 廢牌海 (中間) */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/5 h-2/5 flex flex-wrap content-center justify-center gap-1">
+        {/* 廢牌海 */}
+        <div className="w-4/5 h-1/2 grid grid-cols-6 md:grid-cols-10 gap-1 p-4 overflow-hidden content-center justify-items-center opacity-90">
           {players.flatMap(p => p.discards).map((t, i) => (
             <MahjongTile key={i} id={t} isDiscard />
           ))}
         </div>
+
+        {/* 剩餘張數 */}
+        <div className="absolute top-4 left-4 md:top-8 md:left-10 bg-black/40 text-yellow-500 px-3 py-1 rounded-lg border border-white/10">
+          <span className="text-[10px] block opacity-50">TILES</span>
+          <span className="text-lg font-bold leading-none">{deck.length}</span>
+        </div>
       </div>
 
-      {/* 底部 UI：玩家控制區 */}
-      <div className="absolute bottom-0 w-full h-40 flex flex-col items-center z-50">
+      {/* 控制台與手牌 */}
+      <div className="w-full max-w-5xl h-[25vh] flex flex-col items-center justify-end pb-4 space-y-3 z-40">
         
         {/* 訊息提示 */}
-        <div className="bg-black/60 backdrop-blur-md px-6 py-1 rounded-full text-white text-sm mb-4 border border-white/10 animate-pulse">
+        <div className="bg-black/40 backdrop-blur-sm px-4 py-1 rounded-full text-white text-xs border border-white/10 animate-pulse">
           {gameMsg}
         </div>
 
-        {/* 動作按鈕 */}
-        {turn === 0 && (
-          <div className="flex gap-4 mb-4">
+        {/* 按鈕區 */}
+        <div className="flex gap-4">
+          {turn === 0 && !isGameOver && (
+            <>
+              <button 
+                disabled={!solver.isWin(players[0].hand)}
+                onClick={() => handleWin(0)}
+                className="bg-red-600 hover:bg-red-500 disabled:opacity-30 text-white font-bold px-6 py-2 rounded-full shadow-lg border-2 border-white/20 active:scale-95 transition-all text-sm"
+              >
+                胡牌
+              </button>
+              <button 
+                disabled={selectedIdx === null}
+                onClick={() => handleDiscard(0, selectedIdx)}
+                className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-30 text-amber-950 font-bold px-6 py-2 rounded-full shadow-lg border-2 border-white/20 active:scale-95 transition-all text-sm"
+              >
+                出牌
+              </button>
+            </>
+          )}
+          {isGameOver && (
             <button 
-              disabled={!solver.isWin(players[0].hand)}
-              onClick={() => handleWin(0)}
-              className="bg-red-600 hover:bg-red-500 disabled:bg-slate-700 text-white font-black px-8 py-2 rounded-full border-2 border-white shadow-xl transform active:scale-95 transition-all"
+              onClick={initGame}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-8 py-2 rounded-full shadow-lg border-2 border-white/20 flex items-center gap-2"
             >
-              胡牌
+              <RefreshCw size={18} /> 再來一局
             </button>
-            <button 
-              onClick={() => selectedIdx !== null && handleDiscard(0, selectedIdx)}
-              className="bg-yellow-500 hover:bg-yellow-400 text-amber-950 font-black px-8 py-2 rounded-full border-2 border-white shadow-xl transform active:scale-95 transition-all"
-            >
-              出牌
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* 玩家手牌 */}
-        <div className="flex gap-0.5 px-8 py-4 bg-black/40 backdrop-blur-xl rounded-t-[40px] border-t-2 border-yellow-500/40 shadow-2xl">
-          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-3">
-             <div className="w-12 h-12 rounded-full border-2 border-yellow-400 overflow-hidden bg-slate-200">
-                <img src={players[0].avatar} className="w-full h-full object-cover" />
-             </div>
-             <div className="text-white">
-                <p className="text-[10px] text-yellow-400 font-bold uppercase">Player</p>
-                <div className="flex items-center gap-1">
-                  <Coins className="w-3 h-3 text-yellow-500" />
-                  <span className="text-sm font-bold tracking-tighter">99,850</span>
-                </div>
-             </div>
-          </div>
-          
-          <div className="flex gap-0.5 ml-28">
+        {/* 手牌展示 */}
+        <div className="w-full flex justify-center items-end px-2 overflow-x-auto no-scrollbar">
+          <div className="flex gap-0.5 md:gap-1 pb-2">
             {players[0].hand.map((tileId, idx) => (
               <MahjongTile 
                 key={`${tileId}-${idx}`} 
                 id={tileId} 
                 isSelected={selectedIdx === idx}
                 isNew={idx === players[0].hand.length - 1 && players[0].hand.length === 17}
-                onClick={() => turn === 0 && setSelectedIdx(idx)}
+                onClick={() => turn === 0 && !isGameOver && setSelectedIdx(idx)}
               />
             ))}
           </div>
         </div>
       </div>
 
-      {/* 右上角工具列 */}
-      <div className="absolute top-6 right-8 flex gap-4 text-white z-50">
-        <button onClick={initGame} className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center hover:bg-yellow-600 transition shadow-lg"><Settings className="w-5 h-5" /></button>
-        <button className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center hover:bg-yellow-600 transition shadow-lg"><Trophy className="w-5 h-5" /></button>
-        <button className="px-4 h-10 rounded-full bg-emerald-600 flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg border border-white/20">
-          <Coins className="w-4 h-4" />
-          <span className="font-bold text-sm">商店</span>
-        </button>
+      {/* 工具按鈕 */}
+      <div className="fixed top-4 right-4 flex gap-2">
+        <button onClick={initGame} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20"><Smartphone size={18} /></button>
+        <button className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20"><Settings size={18} /></button>
       </div>
 
-      {/* 剩餘張數提示 */}
-      <div className="absolute top-6 left-16 bg-black/40 text-yellow-500 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm">
-        <p className="text-[10px] uppercase font-bold text-white/50">Deck Tiles</p>
-        <p className="text-xl font-black">{deck.length}</p>
-      </div>
+      <style dangerouslySetInnerHTML={{ __html: `
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}} />
     </div>
   );
 }
