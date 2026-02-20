@@ -1,385 +1,374 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>聖劍石 (Excalibur-Stone) 雙刀流戰術控制台</title>
-<style>
-    :root {
-        --bg-main: #0b1120;
-        --bg-card: #1e293b;
-        --bg-input: #334155;
-        --text-main: #f1f5f9;
-        --text-sub: #94a3b8;
-        --accent-blue: #38bdf8;
-        --accent-green: #22c55e;
-        --accent-red: #ef4444;
-        --accent-yellow: #eab308;
-        --border: #475569;
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Shield, Volume2, Settings, Trophy, Coins, MessageCircle } from 'lucide-react';
+
+// ==========================================
+// 1. 核心胡牌演算法 (Mahjong16Solver)
+// ==========================================
+class Mahjong16Solver {
+  constructor() {
+    this.HONOR_START = 27;
+    this.memo = new Map();
+  }
+
+  isWin(tiles) {
+    if (tiles.length !== 17) return false;
+    const sorted = [...tiles].sort((a, b) => a - b);
+    const counts = this._toCounts(sorted);
+    this.memo.clear();
+    return this._isStandardWin(counts);
+  }
+
+  _toCounts(tiles) {
+    const counts = new Array(34).fill(0);
+    tiles.forEach(t => counts[t]++);
+    return counts;
+  }
+
+  _isStandardWin(counts) {
+    for (let i = 0; i < 34; i++) {
+      if (counts[i] >= 2) {
+        const temp = [...counts];
+        temp[i] -= 2;
+        if (this._canFormMelds(temp)) return true;
+      }
     }
-    body {
-        font-family: 'Segoe UI', Microsoft JhengHei, sans-serif;
-        background-color: var(--bg-main);
-        color: var(--text-main);
-        margin: 0;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+    return false;
+  }
+
+  _canFormMelds(counts) {
+    const key = counts.join(',');
+    if (this.memo.has(key)) return this.memo.get(key);
+    let first = -1;
+    for (let i = 0; i < 34; i++) {
+      if (counts[i] > 0) { first = i; break; }
     }
-    .container {
-        width: 100%;
-        max-width: 1200px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
+    if (first === -1) return true;
+    if (counts[first] >= 3) {
+      counts[first] -= 3;
+      if (this._canFormMelds(counts)) {
+        counts[first] += 3;
+        this.memo.set(key, true);
+        return true;
+      }
+      counts[first] += 3;
     }
-    @media (max-width: 768px) {
-        .container { grid-template-columns: 1fr; }
+    if (first < this.HONOR_START) {
+      const suitBase = Math.floor(first / 9) * 9;
+      if (first + 2 < suitBase + 9 && counts[first + 1] > 0 && counts[first + 2] > 0) {
+        counts[first]--; counts[first + 1]--; counts[first + 2]--;
+        if (this._canFormMelds(counts)) {
+          counts[first]++; counts[first + 1]++; counts[first + 2]++;
+          this.memo.set(key, true);
+          return true;
+        }
+        counts[first]++; counts[first + 1]++; counts[first + 2]++;
+      }
     }
-    .header {
-        width: 100%;
-        max-width: 1200px;
-        border-bottom: 2px solid var(--accent-blue);
-        margin-bottom: 20px;
-        padding-bottom: 10px;
-        display: flex;
-        justify-content: space-between;
-        align-items: end;
-    }
-    .header h1 { margin: 0; color: var(--accent-blue); text-transform: uppercase; letter-spacing: 1px; }
-    .header span { font-size: 0.9em; color: var(--text-sub); }
-    .card {
-        background-color: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
-    h2 { color: var(--accent-blue); font-size: 1.2rem; border-left: 4px solid var(--accent-blue); padding-left: 10px; margin-top: 0; }
-    h3 { font-size: 1rem; color: var(--text-sub); margin-bottom: 10px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
-    /* Input Fields */
-    .input-group { margin-bottom: 15px; }
-    label { display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-sub); }
-    input[type="number"], input[type="text"], select {
-        width: 100%;
-        padding: 10px;
-        background: var(--bg-input);
-        border: 1px solid var(--border);
-        color: white;
-        border-radius: 4px;
-        box-sizing: border-box;
-    }
-    /* Checkbox Group */
-    .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
-    .checkbox-item { display: flex; align-items: center; gap: 10px; cursor: pointer; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px; }
-    .checkbox-item:hover { background: rgba(255,255,255,0.05); }
-    /* Image Upload */
-    .upload-area {
-        border: 2px dashed var(--border);
-        padding: 20px;
-        text-align: center;
-        cursor: pointer;
-        margin-bottom: 15px;
-        transition: 0.3s;
-    }
-    .upload-area:hover { border-color: var(--accent-blue); background: rgba(56, 189, 248, 0.05); }
-    #preview-img { max-width: 100%; display: none; margin-top: 10px; border-radius: 4px; border: 1px solid var(--border); }
-    /* Results Grid */
-    .results-grid {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 5px;
-        margin-top: 10px;
-        text-align: center;
-    }
-    .res-box { padding: 10px 5px; background: #0f172a; border-radius: 4px; border: 1px solid var(--border); }
-    .res-val { font-size: 1.1rem; font-weight: bold; color: white; }
-    .res-label { font-size: 0.75rem; color: var(--text-sub); }
-    /* Status Lights */
-    .status-badge {
-        display: inline-block;
-        padding: 5px 15px;
-        border-radius: 20px;
-        font-weight: bold;
-        text-transform: uppercase;
-        margin-top: 10px;
-        width: 100%;
-        text-align: center;
-    }
-    .status-green { background: rgba(34, 197, 94, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
-    .status-yellow { background: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
-    .status-red { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); border: 1px solid var(--accent-red); }
-    /* Output Area */
-    .output-area {
-        width: 100%;
-        height: 300px;
-        background: #000;
-        color: #0f0;
-        font-family: 'Courier New', monospace;
-        padding: 15px;
-        border: 1px solid var(--border);
-        resize: vertical;
-        box-sizing: border-box;
-    }
-    button {
-        background: linear-gradient(90deg, #2563eb, #1d4ed8);
-        color: white;
-        border: none;
-        padding: 12px 20px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-weight: bold;
-        width: 100%;
-        margin-top: 10px;
-        transition: 0.2s;
-    }
-    button:hover { filter: brightness(1.1); }
-    button.secondary { background: var(--bg-input); color: var(--text-sub); }
-</style>
-</head>
-<body>
-    <div class="header">
-        <h1>聖劍石戰術控制台</h1>
-        <span>VER 2.0 | EXCALIBUR-STONE SYSTEM</span>
-    </div>
-    <div class="container">
-        <div class="left-col">
-            <div class="card">
-                <h2>1. 圖像情報 (Visual Intel)</h2>
-                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-                    <span id="upload-text">點擊上傳 K線圖/籌碼截圖 以供對照</span>
-                    <input type="file" id="fileInput" accept="image/*" style="display: none" onchange="previewImage(event)">
-                </div>
-                <img id="preview-img" src="" alt="Stock Chart Preview">
-            </div>
-            <div class="card" style="margin-top: 20px;">
-                <h2>2. 價格參數 (CDP Input)</h2>
-                <div class="input-group">
-                    <label>股票代號/名稱</label>
-                    <input type="text" id="stockName" placeholder="例如：2330 台積電">
-                </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-                    <div class="input-group">
-                        <label>昨日高 (H)</label>
-                        <input type="number" id="priceH" step="0.01" oninput="calculateCDP()">
-                    </div>
-                    <div class="input-group">
-                        <label>昨日低 (L)</label>
-                        <input type="number" id="priceL" step="0.01" oninput="calculateCDP()">
-                    </div>
-                    <div class="input-group">
-                        <label>昨日收 (C)</label>
-                        <input type="number" id="priceC" step="0.01" oninput="calculateCDP()">
-                    </div>
-                </div>
-            </div>
-            <div class="card" style="margin-top: 20px;">
-                <h2>3. 戰略檢核 (Checklist)</h2>
-                <h3>第一劍：基本面</h3>
-                <div class="input-group">
-                    <label>營業現金流狀態</label>
-                    <select id="sword1" onchange="updateStatus()">
-                        <option value="pass">合格 (正數 +)</option>
-                        <option value="fail">不合格 (負數 -)</option>
-                    </select>
-                </div>
-                <h3>第二劍：籌碼結構</h3>
-                <div class="input-group">
-                    <label>外資 vs 內資動向</label>
-                    <select id="sword2" onchange="updateStatus()">
-                        <option value="sync">雙劍合璧 (外資增 / 內資增)</option>
-                        <option value="foreign_heavy">外資獨撐 (外資 > 50%)</option>
-                        <option value="internal_sell">危險訊號 (外資增 / 內資倒貨)</option>
-                        <option value="messy">籌碼渙散 (無大人顧)</option>
-                    </select>
-                </div>
-                <h3>第三劍 & 風險判定</h3>
-                <div class="checkbox-group">
-                    <label class="checkbox-item">
-                        <input type="checkbox" id="hasBig3" onchange="updateStatus()">
-                        <span>出現三大真主力 (大摩/高盛/瑞銀)</span>
-                    </label>
-                    <label class="checkbox-item">
-                        <input type="checkbox" id="hasHighRisk" onchange="updateStatus()">
-                        <span style="color:var(--accent-red)">出現高風險主力 (隔日沖/假外資/虎尾幫)</span>
-                    </label>
-                </div>
-                <div class="input-group" style="margin-top:10px;">
-                    <label>關鍵券商備註 (選填)</label>
-                    <input type="text" id="brokerNotes" placeholder="例：凱基台北大買、元大土城賣超">
-                </div>
-            </div>
+    this.memo.set(key, false);
+    return false;
+  }
+}
+
+// ==========================================
+// 2. 常數設定
+// ==========================================
+const TILE_SYMBOLS = [
+  '🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏', // 萬 0-8
+  '🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡', // 筒 9-17
+  '🀐','🀑','🀒','🀓','🀔','🀕','🀖','🀗','🀘', // 索 18-26
+  '🀀','🀁','🀂','🀃','🀄','🀅','🀆'         // 字 27-33
+];
+
+const CHARACTERS = [
+  { name: '你', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Player', pitch: 1.0 },
+  { name: '憲哥', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', pitch: 1.2, quotes: { discard: "見鬼啦！這張給你", win: "我是 Local King！", draw: "摸一張水喔！" } },
+  { name: '乃哥', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka', pitch: 0.8, quotes: { discard: "我不錄了！這張拿去", win: "這就是實力！", draw: "終於摸到了。" } },
+  { name: '美鳳姐', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily', pitch: 1.5, quotes: { discard: "這張水喔～", win: "哎呀，真是不好意思～", draw: "手氣不錯呢。" } }
+];
+
+// ==========================================
+// 3. 語音引擎
+// ==========================================
+const speak = (text, pitch = 1) => {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-TW';
+  utterance.pitch = pitch;
+  utterance.rate = 1.1;
+  window.speechSynthesis.speak(utterance);
+};
+
+// ==========================================
+// 4. 子組件
+// ==========================================
+const CelebAvatar = ({ player, isTurn, bubble, position }) => {
+  const posStyles = {
+    top: "top-4 left-1/2 -translate-x-1/2",
+    left: "top-1/3 left-4",
+    right: "top-1/3 right-4"
+  };
+
+  return (
+    <div className={`absolute ${posStyles[position]} flex flex-col items-center z-30 transition-all duration-500`}>
+      {bubble && (
+        <div className="absolute -top-16 bg-white text-black px-4 py-2 rounded-2xl text-sm font-bold shadow-2xl animate-bounce border-2 border-slate-200 whitespace-nowrap after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-8 after:border-transparent after:border-t-white">
+          {bubble}
         </div>
-        <div class="right-col">
-            <div class="card">
-                <h2>4. 石頭戰法網格 (Tactical Grid)</h2>
-                <div class="results-grid">
-                    <div class="res-box" style="border-color: var(--accent-red);">
-                        <div class="res-label">AH (壓)</div>
-                        <div class="res-val" id="val-ah">--</div>
-                    </div>
-                    <div class="res-box" style="border-color: var(--accent-green);">
-                        <div class="res-label">NH (追)</div>
-                        <div class="res-val" id="val-nh">--</div>
-                    </div>
-                    <div class="res-box" style="border-color: var(--accent-blue);">
-                        <div class="res-label">CDP (中)</div>
-                        <div class="res-val" id="val-cdp">--</div>
-                    </div>
-                    <div class="res-box">
-                        <div class="res-label">NL (撐)</div>
-                        <div class="res-val" id="val-nl">--</div>
-                    </div>
-                    <div class="res-box">
-                        <div class="res-label">AL (停)</div>
-                        <div class="res-val" id="val-al">--</div>
-                    </div>
-                </div>
-                <div id="status-indicator" class="status-badge status-yellow">等待輸入數據...</div>
-            </div>
-            <div class="card" style="margin-top: 20px;">
-                <h2>5. 診斷報告輸出 (Report)</h2>
-                <textarea id="outputReport" class="output-area" readonly></textarea>
-                <div style="display:flex; gap:10px;">
-                    <button onclick="generateReport()">生成診斷報告</button>
-                    <button class="secondary" onclick="copyReport()">複製報告</button>
-                </div>
-            </div>
+      )}
+      <div className={`relative ${isTurn ? 'scale-110' : 'opacity-80 scale-95'}`}>
+        <div className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 ${isTurn ? 'border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.6)]' : 'border-slate-400'} overflow-hidden bg-orange-100 shadow-xl transition-all`}>
+          <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" />
         </div>
+        {isTurn && (
+          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse font-black tracking-widest">
+            THINKING
+          </div>
+        )}
+      </div>
+      <div className="mt-2 bg-black/70 backdrop-blur-sm px-4 py-1 rounded-full text-yellow-400 font-bold text-xs border border-yellow-900/50 shadow-lg">
+        {player.name}
+      </div>
     </div>
-<script>
-    // 1. Image Preview Logic
-    function previewImage(event) {
-        var reader = new FileReader();
-        reader.onload = function(){
-            var output = document.getElementById('preview-img');
-            output.src = reader.result;
-            output.style.display = 'block';
-            document.getElementById('upload-text').innerText = "圖片已載入";
-        };
-        reader.readAsDataURL(event.target.files[0]);
+  );
+};
+
+const MahjongTile = ({ id, isSelected, onClick, isDiscard, isNew }) => {
+  const isRed = id <= 8 || id === 31; // 萬子與紅中
+  return (
+    <div 
+      onClick={onClick}
+      className={`
+        relative bg-white rounded-md flex items-center justify-center cursor-pointer transition-all
+        ${isSelected ? '-translate-y-4 ring-4 ring-yellow-400 z-10' : 'hover:-translate-y-1 shadow-md'}
+        ${isDiscard ? 'w-8 h-12 text-2xl' : 'w-11 h-16 text-4xl'}
+        ${isRed ? 'text-rose-600' : 'text-emerald-700'}
+        ${isNew ? 'animate-bounce border-blue-400' : 'border-slate-300'}
+        font-serif font-bold border-2
+      `}
+      style={{ 
+        boxShadow: 'inset 0 -4px 0 #e2e8f0, 2px 2px 4px rgba(0,0,0,0.2)',
+        userSelect: 'none'
+      }}
+    >
+      {TILE_SYMBOLS[id]}
+    </div>
+  );
+};
+
+// ==========================================
+// 5. 主程式
+// ==========================================
+export default function App() {
+  const solver = useMemo(() => new Mahjong16Solver(), []);
+  const [deck, setDeck] = useState([]);
+  const [turn, setTurn] = useState(0); // 0: Player, 1-3: NPCs
+  const [players, setPlayers] = useState(CHARACTERS.map((c, i) => ({ ...c, id: i, hand: [], discards: [] })));
+  const [bubbles, setBubbles] = useState({});
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [gameMsg, setGameMsg] = useState("歡迎來到明星大對決！");
+  const [lastDiscard, setLastDiscard] = useState(null);
+
+  // 初始化遊戲
+  const initGame = useCallback(() => {
+    let newDeck = [];
+    for (let i = 0; i < 34; i++) {
+      for (let j = 0; j < 4; j++) newDeck.push(i);
     }
-    // 2. CDP Calculation Logic
-    function calculateCDP() {
-        let H = parseFloat(document.getElementById('priceH').value);
-        let L = parseFloat(document.getElementById('priceL').value);
-        let C = parseFloat(document.getElementById('priceC').value);
-        if (isNaN(H) || isNaN(L) || isNaN(C)) return;
-        // User Formula: CDP = (H + L + C) / 4
-        let cdp = (H + L + C) / 4;
-        let ah = cdp + (H - L);
-        let nh = cdp * 2 - L;
-        let nl = cdp * 2 - H;
-        let al = cdp - (H - L);
-        document.getElementById('val-cdp').innerText = cdp.toFixed(2);
-        document.getElementById('val-ah').innerText = ah.toFixed(2);
-        document.getElementById('val-nh').innerText = nh.toFixed(2);
-        document.getElementById('val-nl').innerText = nl.toFixed(2);
-        document.getElementById('val-al').innerText = al.toFixed(2);
-        updateStatus(); // Update status when price changes
+    newDeck.sort(() => Math.random() - 0.5);
+
+    const newPlayers = [...players];
+    for (let i = 0; i < 4; i++) {
+      newPlayers[i].hand = newDeck.splice(0, 16).sort((a, b) => a - b);
+      newPlayers[i].discards = [];
     }
-    // 3. Status Logic (Traffic Light)
-    function updateStatus() {
-        let s1 = document.getElementById('sword1').value; // pass, fail
-        let s2 = document.getElementById('sword2').value; // sync, foreign_heavy, internal_sell, messy
-        let big3 = document.getElementById('hasBig3').checked;
-        let highRisk = document.getElementById('hasHighRisk').checked;
-        let indicator = document.getElementById('status-indicator');
-        let statusText = "";
-        let statusClass = "";
-        // Logic based on prompt
-        if (s1 === 'fail' || s2 === 'internal_sell' || s2 === 'messy') {
-            // RED LIGHT
-            statusText = "🔴 紅燈 (撤退/偏空) - 嚴守 NL";
-            statusClass = "status-red";
-        } else if (highRisk) {
-            // YELLOW LIGHT (High risk broker present)
-            statusText = "🟡 黃燈 (震盪/警戒) - 隔日沖干擾";
-            statusClass = "status-yellow";
-        } else if (s1 === 'pass' && (s2 === 'sync' || s2 === 'foreign_heavy') && big3) {
-            // GREEN LIGHT (Perfect)
-            statusText = "🟢 綠燈 (進攻/偏多) - 趨勢確立";
-            statusClass = "status-green";
-        } else {
-            // Default to Yellow (Mixed signals)
-            statusText = "🟡 黃燈 (震盪/觀察) - 訊號未滿";
-            statusClass = "status-yellow";
-        }
-        indicator.className = "status-badge " + statusClass;
-        indicator.innerText = statusText;
-        indicator.dataset.light = statusText.substring(0, 1); // Store emoji for report
+    
+    setDeck(newDeck);
+    setPlayers(newPlayers);
+    setTurn(0);
+    drawTile(0, newPlayers, newDeck);
+  }, []);
+
+  useEffect(() => {
+    initGame();
+  }, []);
+
+  // 摸牌邏輯
+  const drawTile = (pIdx, currentPlayers, currentDeck) => {
+    if (currentDeck.length === 0) {
+      setGameMsg("平局！牌摸完了。");
+      return;
     }
-    // 4. Report Generation Logic
-    function generateReport() {
-        let name = document.getElementById('stockName').value || "未知股號";
-        let H = document.getElementById('priceH').value;
-        let cdp = document.getElementById('val-cdp').innerText;
-        if (cdp === "--") {
-            alert("請先輸入價格數據 (H/L/C)");
-            return;
-        }
-        let ah = document.getElementById('val-ah').innerText;
-        let nh = document.getElementById('val-nh').innerText;
-        let nl = document.getElementById('val-nl').innerText;
-        let al = document.getElementById('val-al').innerText;
-        let s1 = document.getElementById('sword1');
-        let s2 = document.getElementById('sword2');
-        let big3 = document.getElementById('hasBig3').checked;
-        let highRisk = document.getElementById('hasHighRisk').checked;
-        let brokerNotes = document.getElementById('brokerNotes').value || "無特別標註";
-        let indicator = document.getElementById('status-indicator');
-        // Logic Translation
-        let s1Text = s1.value === 'pass' ? "正數 -> 合格" : "負數 -> ❌ 不合格";
-        let s2Text = "";
-        if(s2.value === 'sync') s2Text = "外資升 / 內資升 -> 同步吸籌";
-        else if(s2.value === 'foreign_heavy') s2Text = "外資升 / 內資平 -> 外資獨撐";
-        else if(s2.value === 'internal_sell') s2Text = "外資升 / 內資降 -> ❌ 內資倒貨";
-        else s2Text = "籌碼渙散 -> 觀望";
-        let s3Text = big3 ? "出現關鍵三大 (大摩/高盛/瑞銀)" : "無顯著真主力";
-        // Scenario Script
-        let light = indicator.dataset.light;
-        let actionScript = "";
-        let conclusion = "";
-        if (light === "🟢") {
-            actionScript = `1. 進攻 (Long)：三把劍合格，若突破 NH (${nh}) 且內資未跑，順勢操作。\n2. 防守：守住 NL (${nl})。`;
-            conclusion = `[強烈建議進場]；主力趨勢確立，守住 ${nl} 續抱，見 ${ah} 獲利。`;
-        } else if (light === "🟡") {
-            actionScript = `1. 進攻：不建議追高，僅低接。\n2. 防守/放空 (Short)：若見 AH (${ah}) 不過可嘗試短空 (隔日沖賣壓)。`;
-            conclusion = `[觀望/短線操作]；留意隔日沖賣壓，嚴禁追價，區間操作。`;
-        } else {
-            actionScript = `1. 進攻：禁止。\n2. 防守：跌破 NL (${nl}) 無條件停損，甚至反手做空。`;
-            conclusion = `[建議放空/出場]；籌碼結構轉弱，嚴格執行 AL (${al}) 停損。`;
-        }
-        // Final Text Block
-        let report = `## 🎯 [${name}] 聖劍石極速診斷報告
-### 一、 戰略層：三把劍檢核
-- 第一劍 (金流)：${s1Text}
-- 第二劍 (結構)：${s2Text}
-- 第三劍 (血統)：${s3Text}
-### 二、 戰術層：石頭戰法網格
-- AH (極限壓)：${ah} -> 乖離過大，多單獲利，空單嘗試
-- NH (追擊點)：${nh} -> 突破且量增，視為發動點
-- CDP (中軸)：${cdp} -> 多空分水嶺，站穩偏多
-- NL (防守點)：${nl} -> 多頭重要支撐，跌破轉弱
-- AL (停損點)：${al} -> 最後防線，跌破無條件離場
-### 三、 籌碼雷達與燈號
-- 總體燈號：${indicator.innerText}
-- 關鍵券商解析：
-  ${brokerNotes} ${highRisk ? "(⚠️含高風險主力)" : ""}
-### 四、 作戰劇本
-${actionScript}
-### 五、 結語
-「${conclusion}」`;
-        document.getElementById('outputReport').value = report;
+    const tile = currentDeck[0];
+    const nextDeck = currentDeck.slice(1);
+    const nextPlayers = [...currentPlayers];
+    nextPlayers[pIdx].hand.push(tile);
+    
+    setDeck(nextDeck);
+    setPlayers(nextPlayers);
+
+    // 檢查摸牌後是否胡牌 (僅示範玩家或簡單邏輯)
+    if (solver.isWin(nextPlayers[pIdx].hand)) {
+      handleWin(pIdx);
+    } else {
+      if (pIdx !== 0) {
+        // AI 自動打牌
+        setTimeout(() => handleDiscard(pIdx, nextPlayers[pIdx].hand.length - 1), 1500);
+      }
     }
-    function copyReport() {
-        let copyText = document.getElementById("outputReport");
-        copyText.select();
-        copyText.setSelectionRange(0, 99999);
-        navigator.clipboard.writeText(copyText.value);
-        alert("報告已複製！");
+  };
+
+  // 打牌邏輯
+  const handleDiscard = (pIdx, tileIdx) => {
+    const nextPlayers = [...players];
+    const tile = nextPlayers[pIdx].hand.splice(tileIdx, 1)[0];
+    nextPlayers[pIdx].discards.push(tile);
+    nextPlayers[pIdx].hand.sort((a, b) => a - b);
+    
+    setLastDiscard(tile);
+    setPlayers(nextPlayers);
+    setSelectedIdx(null);
+
+    // 說話
+    if (pIdx !== 0 && nextPlayers[pIdx].quotes) {
+      const quote = nextPlayers[pIdx].quotes.discard;
+      setBubbles({ [pIdx]: quote });
+      speak(quote, nextPlayers[pIdx].pitch);
+      setTimeout(() => setBubbles({}), 2000);
     }
-</script>
-</body>
-</html>
+
+    // 換下一位
+    const nextTurn = (pIdx + 1) % 4;
+    setTurn(nextTurn);
+    setTimeout(() => drawTile(nextTurn, nextPlayers, deck), 500);
+  };
+
+  const handleWin = (pIdx) => {
+    const winner = players[pIdx];
+    setGameMsg(`${winner.name} 胡牌了！`);
+    if (winner.quotes) {
+      setBubbles({ [pIdx]: winner.quotes.win });
+      speak(winner.quotes.win, winner.pitch);
+    }
+    setTurn(-1); // 結束
+  };
+
+  return (
+    <div className="w-full h-screen relative bg-[#062012] overflow-hidden font-sans select-none">
+      
+      {/* 背景裝飾：城市剪影 */}
+      <div className="absolute inset-0 pointer-events-none opacity-20">
+        <div className="w-full h-full bg-gradient-to-b from-emerald-900 to-transparent flex items-end justify-around px-20">
+          {[160, 240, 180, 300, 200].map((h, i) => (
+            <div key={i} style={{ height: h }} className="w-24 bg-emerald-800/40 rounded-t-xl" />
+          ))}
+        </div>
+      </div>
+
+      {/* 左右木質邊框模擬音響 */}
+      <div className="absolute left-0 top-0 w-12 h-full bg-gradient-to-r from-amber-950 to-amber-900 border-r-2 border-amber-800 flex flex-col items-center py-20 gap-8 shadow-2xl">
+        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
+        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
+      </div>
+      <div className="absolute right-0 top-0 w-12 h-full bg-gradient-to-l from-amber-950 to-amber-900 border-l-2 border-amber-800 flex flex-col items-center py-20 gap-8 shadow-2xl">
+        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
+        <div className="w-6 h-6 rounded-full bg-black/80 shadow-inner" />
+      </div>
+
+      {/* 牌桌主體 */}
+      <div className="absolute inset-16 md:inset-24 bg-[#144229] rounded-[80px] border-[12px] border-amber-900 shadow-[0_0_80px_rgba(0,0,0,0.6)] overflow-hidden">
+        <div className="absolute inset-0 border-2 border-emerald-400/10 rounded-[68px]"></div>
+        
+        {/* 中間 LOGO & 資訊 */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center opacity-30">
+          <Shield className="w-32 h-32 text-emerald-100" />
+          <h2 className="text-emerald-100 font-black text-2xl tracking-[1em] mt-4">明星麻將</h2>
+        </div>
+
+        {/* NPC 角色 */}
+        <CelebAvatar player={players[2]} isTurn={turn === 2} bubble={bubbles[2]} position="top" />
+        <CelebAvatar player={players[1]} isTurn={turn === 1} bubble={bubbles[1]} position="left" />
+        <CelebAvatar player={players[3]} isTurn={turn === 3} bubble={bubbles[3]} position="right" />
+
+        {/* 廢牌海 (中間) */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3/5 h-2/5 flex flex-wrap content-center justify-center gap-1">
+          {players.flatMap(p => p.discards).map((t, i) => (
+            <MahjongTile key={i} id={t} isDiscard />
+          ))}
+        </div>
+      </div>
+
+      {/* 底部 UI：玩家控制區 */}
+      <div className="absolute bottom-0 w-full h-40 flex flex-col items-center z-50">
+        
+        {/* 訊息提示 */}
+        <div className="bg-black/60 backdrop-blur-md px-6 py-1 rounded-full text-white text-sm mb-4 border border-white/10 animate-pulse">
+          {gameMsg}
+        </div>
+
+        {/* 動作按鈕 */}
+        {turn === 0 && (
+          <div className="flex gap-4 mb-4">
+            <button 
+              disabled={!solver.isWin(players[0].hand)}
+              onClick={() => handleWin(0)}
+              className="bg-red-600 hover:bg-red-500 disabled:bg-slate-700 text-white font-black px-8 py-2 rounded-full border-2 border-white shadow-xl transform active:scale-95 transition-all"
+            >
+              胡牌
+            </button>
+            <button 
+              onClick={() => selectedIdx !== null && handleDiscard(0, selectedIdx)}
+              className="bg-yellow-500 hover:bg-yellow-400 text-amber-950 font-black px-8 py-2 rounded-full border-2 border-white shadow-xl transform active:scale-95 transition-all"
+            >
+              出牌
+            </button>
+          </div>
+        )}
+
+        {/* 玩家手牌 */}
+        <div className="flex gap-0.5 px-8 py-4 bg-black/40 backdrop-blur-xl rounded-t-[40px] border-t-2 border-yellow-500/40 shadow-2xl">
+          <div className="absolute left-6 top-1/2 -translate-y-1/2 flex items-center gap-3">
+             <div className="w-12 h-12 rounded-full border-2 border-yellow-400 overflow-hidden bg-slate-200">
+                <img src={players[0].avatar} className="w-full h-full object-cover" />
+             </div>
+             <div className="text-white">
+                <p className="text-[10px] text-yellow-400 font-bold uppercase">Player</p>
+                <div className="flex items-center gap-1">
+                  <Coins className="w-3 h-3 text-yellow-500" />
+                  <span className="text-sm font-bold tracking-tighter">99,850</span>
+                </div>
+             </div>
+          </div>
+          
+          <div className="flex gap-0.5 ml-28">
+            {players[0].hand.map((tileId, idx) => (
+              <MahjongTile 
+                key={`${tileId}-${idx}`} 
+                id={tileId} 
+                isSelected={selectedIdx === idx}
+                isNew={idx === players[0].hand.length - 1 && players[0].hand.length === 17}
+                onClick={() => turn === 0 && setSelectedIdx(idx)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 右上角工具列 */}
+      <div className="absolute top-6 right-8 flex gap-4 text-white z-50">
+        <button onClick={initGame} className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center hover:bg-yellow-600 transition shadow-lg"><Settings className="w-5 h-5" /></button>
+        <button className="w-10 h-10 rounded-full bg-black/40 flex items-center justify-center hover:bg-yellow-600 transition shadow-lg"><Trophy className="w-5 h-5" /></button>
+        <button className="px-4 h-10 rounded-full bg-emerald-600 flex items-center gap-2 hover:bg-emerald-500 transition shadow-lg border border-white/20">
+          <Coins className="w-4 h-4" />
+          <span className="font-bold text-sm">商店</span>
+        </button>
+      </div>
+
+      {/* 剩餘張數提示 */}
+      <div className="absolute top-6 left-16 bg-black/40 text-yellow-500 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm">
+        <p className="text-[10px] uppercase font-bold text-white/50">Deck Tiles</p>
+        <p className="text-xl font-black">{deck.length}</p>
+      </div>
+    </div>
+  );
+}
