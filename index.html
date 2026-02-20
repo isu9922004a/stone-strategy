@@ -1,386 +1,282 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Shield, Volume2, Settings, Trophy, Coins, MessageCircle, RefreshCw, Smartphone } from 'lucide-react';
-
-/**
- * ==========================================
- * 1. 核心胡牌演算法 (Mahjong16Solver)
- * ==========================================
- */
-class Mahjong16Solver {
-  constructor() {
-    this.HONOR_START = 27;
-    this.memo = new Map();
-  }
-
-  isWin(tiles) {
-    if (tiles.length !== 17) return false;
-    const sorted = [...tiles].sort((a, b) => a - b);
-    const counts = this._toCounts(sorted);
-    this.memo.clear();
-    return this._isStandardWin(counts);
-  }
-
-  _toCounts(tiles) {
-    const counts = new Array(34).fill(0);
-    tiles.forEach(t => counts[t]++);
-    return counts;
-  }
-
-  _isStandardWin(counts) {
-    for (let i = 0; i < 34; i++) {
-      if (counts[i] >= 2) {
-        const temp = [...counts];
-        temp[i] -= 2;
-        if (this._canFormMelds(temp)) return true;
-      }
-    }
-    return false;
-  }
-
-  _canFormMelds(counts) {
-    const key = counts.join(',');
-    if (this.memo.has(key)) return this.memo.get(key);
-    let first = -1;
-    for (let i = 0; i < 34; i++) {
-      if (counts[i] > 0) { first = i; break; }
-    }
-    if (first === -1) return true;
-
-    // 刻子
-    if (counts[first] >= 3) {
-      counts[first] -= 3;
-      if (this._canFormMelds(counts)) {
-        counts[first] += 3;
-        this.memo.set(key, true);
-        return true;
-      }
-      counts[first] += 3;
-    }
-
-    // 順子
-    if (first < this.HONOR_START) {
-      const suitBase = Math.floor(first / 9) * 9;
-      if (first + 2 < suitBase + 9 && counts[first + 1] > 0 && counts[first + 2] > 0) {
-        counts[first]--; counts[first + 1]--; counts[first + 2]--;
-        if (this._canFormMelds(counts)) {
-          counts[first]++; counts[first + 1]++; counts[first + 2]++;
-          this.memo.set(key, true);
-          return true;
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>明星麻將 - 高清大字版</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&display=swap');
+        
+        body { 
+            margin: 0; 
+            background: #000; 
+            overflow: hidden; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            height: 100vh;
+            width: 100vw;
         }
-        counts[first]++; counts[first + 1]++; counts[first + 2]++;
-      }
-    }
-    this.memo.set(key, false);
-    return false;
-  }
-}
 
-/**
- * ==========================================
- * 2. 常數與資源
- * ==========================================
- */
-const TILE_SYMBOLS = [
-  '🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏', // 萬 0-8
-  '🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡', // 筒 9-17
-  '🀐','🀑','🀒','🀓','🀔','🀕','🀖','🀗','🀘', // 索 18-26
-  '🀀','🀁','🀂','🀃','🀄','🀅','🀆'         // 字 27-33
-];
+        .game-wrapper {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(to bottom, #1e3a8a 0%, #3b82f6 30%, #064e3b 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
 
-const CHARACTERS = [
-  { name: '你', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Player', pitch: 1.0 },
-  { name: '憲哥', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', pitch: 1.2, quotes: { discard: "見鬼啦！這張給你", win: "我是 Local King！", draw: "摸一張水喔！" } },
-  { name: '乃哥', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka', pitch: 0.8, quotes: { discard: "我不錄了！這張拿去", win: "這就是實力！", draw: "終於摸到了。" } },
-  { name: '美鳳姐', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily', pitch: 1.5, quotes: { discard: "這張水喔～", win: "哎呀，真是不好意思～", draw: "手氣不錯呢。" } }
-];
+        /* 3D 牌桌佈局 */
+        .table-area {
+            perspective: 1200px;
+            width: 100%;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: -5%;
+        }
 
-const speak = (text, pitch = 1) => {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'zh-TW';
-  utterance.pitch = pitch;
-  utterance.rate = 1.2;
-  window.speechSynthesis.speak(utterance);
-};
+        .mahjong-table {
+            width: 96vw;
+            height: 55vh;
+            background: radial-gradient(circle, #2d5a41 0%, #0f3d24 100%);
+            border: 10px solid #5d3a1a;
+            border-radius: 40px;
+            transform: rotateX(30deg);
+            box-shadow: 0 40px 80px rgba(0,0,0,0.7), inset 0 0 60px rgba(0,0,0,0.5);
+            position: relative;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: center;
+            justify-content: center;
+            padding: 30px;
+        }
 
-/**
- * ==========================================
- * 3. 子組件
- * ==========================================
- */
-const CelebAvatar = ({ player, isTurn, bubble, position }) => {
-  const posStyles = {
-    top: "top-4 left-1/2 -translate-x-1/2",
-    left: "top-1/4 left-4",
-    right: "top-1/4 right-4"
-  };
+        .npc-box {
+            position: absolute;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .npc-avatar {
+            width: 75px;
+            height: 75px;
+            border-radius: 15px;
+            border: 3px solid #fbbf24;
+            background: #fff;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+        }
 
-  return (
-    <div className={`absolute ${posStyles[position]} flex flex-col items-center z-30 transition-all duration-500 scale-75 md:scale-100`}>
-      {bubble && (
-        <div className="absolute -top-12 bg-white text-black px-3 py-1 rounded-xl text-xs font-bold shadow-xl animate-bounce border-2 border-slate-200 whitespace-nowrap after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-white">
-          {bubble}
-        </div>
-      )}
-      <div className={`relative ${isTurn ? 'scale-110' : 'opacity-80 scale-95'}`}>
-        <div className={`w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 ${isTurn ? 'border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.6)]' : 'border-slate-500/50'} overflow-hidden bg-orange-100 shadow-xl transition-all`}>
-          <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" />
-        </div>
-      </div>
-      <div className="mt-1 bg-black/60 backdrop-blur-sm px-3 py-0.5 rounded-full text-yellow-400 font-bold text-[10px] border border-yellow-900/30">
-        {player.name}
-      </div>
-    </div>
-  );
-};
-
-const MahjongTile = ({ id, isSelected, onClick, isDiscard, isNew }) => {
-  const isRed = id <= 8 || id === 31;
-  return (
-    <button 
-      onClick={onClick}
-      className={`
-        relative bg-white rounded-sm flex items-center justify-center transition-all active:scale-95
-        ${isSelected ? '-translate-y-3 ring-2 ring-yellow-400 z-10' : 'shadow-sm'}
-        ${isDiscard ? 'w-6 h-9 md:w-8 md:h-12 text-xl md:text-2xl' : 'w-9 h-14 md:w-11 md:h-16 text-3xl md:text-4xl'}
-        ${isRed ? 'text-rose-600' : 'text-emerald-700'}
-        ${isNew ? 'border-blue-400 ring-1 ring-blue-200' : 'border-slate-300'}
-        font-serif font-bold border
-      `}
-      style={{ 
-        boxShadow: 'inset 0 -3px 0 #cbd5e1, 1px 1px 2px rgba(0,0,0,0.1)',
-        touchAction: 'manipulation'
-      }}
-    >
-      {TILE_SYMBOLS[id]}
-    </button>
-  );
-};
-
-/**
- * ==========================================
- * 4. PWA 相關標籤 (用於動態注入)
- * ==========================================
- */
-const PWAMeta = () => (
-  <>
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#062012" />
-    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJuYW1lIjogIuaYjuifp+m6u+WwhyBQV0EiLAogICJzaG9ydF9uYW1lIjogIuaYjuifp+m6u+WwhyIsCiAgInN0YXJ0X3VybCI6ICIuIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMDYyMDEyIiwKICAidGhlbWVfY29sb3IiOiAiIzA2MjAxMiIsCiAgImljb25zIjogWwogICAgewogICAgICAic3JjIjogImh0dHBzOi8vYXBpLmRpY2ViZWFyLmNvbS83LngvYXZhdGFhYXJzL3N2Zz9zZWVkPU1haGpvbmciLAogICAgICAic2l6ZXMiOiAiMTkyeDE5MiIsCiAgICAgICJ0eXBlIjogImltYWdlL3N2Zyt4bWwiCiAgICB9CiAgXQp9" />
-  </>
-);
-
-/**
- * ==========================================
- * 5. 主程式
- * ==========================================
- */
-export default function App() {
-  const solver = useMemo(() => new Mahjong16Solver(), []);
-  const [deck, setDeck] = useState([]);
-  const [turn, setTurn] = useState(0); 
-  const [players, setPlayers] = useState(CHARACTERS.map((c, i) => ({ ...c, id: i, hand: [], discards: [] })));
-  const [bubbles, setBubbles] = useState({});
-  const [selectedIdx, setSelectedIdx] = useState(null);
-  const [gameMsg, setGameMsg] = useState("歡迎來到明星大對決！");
-  const [isGameOver, setIsGameOver] = useState(false);
-
-  // 初始化遊戲
-  const initGame = useCallback(() => {
-    let newDeck = [];
-    for (let i = 0; i < 34; i++) {
-      for (let j = 0; j < 4; j++) newDeck.push(i);
-    }
-    newDeck.sort(() => Math.random() - 0.5);
-
-    const newPlayers = CHARACTERS.map((c, i) => ({ 
-      ...c, 
-      id: i, 
-      hand: newDeck.splice(0, 16).sort((a, b) => a - b),
-      discards: [] 
-    }));
-    
-    setDeck(newDeck);
-    setPlayers(newPlayers);
-    setTurn(0);
-    setIsGameOver(false);
-    setGameMsg("新局開始，祝你好運！");
-    
-    // 第一手摸牌
-    drawTile(0, newPlayers, newDeck);
-  }, []);
-
-  useEffect(() => {
-    initGame();
-    // 註冊 Service Worker 模擬 (PWA 必要)
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        console.log('PWA Ready');
-      });
-    }
-  }, []);
-
-  // 摸牌邏輯
-  const drawTile = (pIdx, currentPlayers, currentDeck) => {
-    if (currentDeck.length === 0) {
-      setGameMsg("平局！牌摸完了。");
-      setIsGameOver(true);
-      return;
-    }
-    const tile = currentDeck[0];
-    const nextDeck = currentDeck.slice(1);
-    const nextPlayers = [...currentPlayers];
-    nextPlayers[pIdx].hand.push(tile);
-    
-    setDeck(nextDeck);
-    setPlayers(nextPlayers);
-
-    // AI 自動檢查與出牌
-    if (pIdx !== 0) {
-      if (solver.isWin(nextPlayers[pIdx].hand)) {
-        setTimeout(() => handleWin(pIdx), 1000);
-      } else {
-        setTimeout(() => handleDiscard(pIdx, nextPlayers[pIdx].hand.length - 1), 1500);
-      }
-    } else {
-      setGameMsg("換你摸牌了");
-    }
-  };
-
-  // 打牌邏輯
-  const handleDiscard = (pIdx, tileIdx) => {
-    if (isGameOver) return;
-    const nextPlayers = [...players];
-    const tile = nextPlayers[pIdx].hand.splice(tileIdx, 1)[0];
-    nextPlayers[pIdx].discards.push(tile);
-    nextPlayers[pIdx].hand.sort((a, b) => a - b);
-    
-    setPlayers(nextPlayers);
-    setSelectedIdx(null);
-
-    // AI 說話
-    if (pIdx !== 0 && nextPlayers[pIdx].quotes) {
-      const quote = nextPlayers[pIdx].quotes.discard;
-      setBubbles({ [pIdx]: quote });
-      speak(quote, nextPlayers[pIdx].pitch);
-      setTimeout(() => setBubbles({}), 1800);
-    }
-
-    const nextTurn = (pIdx + 1) % 4;
-    setTurn(nextTurn);
-    setTimeout(() => drawTile(nextTurn, nextPlayers, deck), 600);
-  };
-
-  const handleWin = (pIdx) => {
-    const winner = players[pIdx];
-    setGameMsg(`${winner.name} 胡牌了！`);
-    setIsGameOver(true);
-    if (winner.quotes) {
-      setBubbles({ [pIdx]: winner.quotes.win });
-      speak(winner.quotes.win, winner.pitch);
-    }
-    setTurn(-1);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-[#062012] overflow-hidden font-sans select-none flex flex-col items-center justify-center">
-      <PWAMeta />
-
-      {/* 牌桌區 */}
-      <div className="relative w-[95vw] h-[70vh] md:w-[85vw] md:h-[75vh] bg-[#144229] rounded-[40px] md:rounded-[80px] border-[8px] md:border-[16px] border-amber-900 shadow-2xl flex items-center justify-center">
+        /* --- 麻將牌 視覺升級 --- */
+        .mj-tile {
+            font-family: 'Noto Serif TC', serif;
+            background: #fff;
+            border-radius: 4px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            /* 模擬麻將的綠色背板 */
+            box-shadow: 
+                0 1px 0 #ccc,
+                0 2px 0 #bbb,
+                0 3px 0 #aaa,
+                0 4px 0 #065f46; /* 綠底 */
+        }
         
-        {/* 中心裝飾 */}
-        <div className="absolute opacity-10 flex flex-col items-center pointer-events-none">
-          <Shield className="w-24 h-24 md:w-48 md:h-48 text-white" />
-          <h1 className="text-white text-xl md:text-4xl font-black tracking-widest mt-4">明星麻將</h1>
-        </div>
+        /* 手牌：極大化處理 */
+        .player-tile {
+            width: calc(100vw / 17.5); /* 寬度略微加大 */
+            max-width: 46px;
+            height: calc(1.45 * calc(100vw / 17.5));
+            max-height: 66px;
+            font-size: calc(100vw / 18); /* 字體極大化 */
+            margin: 0 1px;
+            font-weight: 900;
+        }
 
-        {/* NPC 位元 */}
-        <CelebAvatar player={players[2]} isTurn={turn === 2} bubble={bubbles[2]} position="top" />
-        <CelebAvatar player={players[1]} isTurn={turn === 1} bubble={bubbles[1]} position="left" />
-        <CelebAvatar player={players[3]} isTurn={turn === 3} bubble={bubbles[3]} position="right" />
+        .player-tile.selected {
+            transform: translateY(-20px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5), 0 4px 0 #fbbf24;
+            z-index: 10;
+        }
 
-        {/* 廢牌海 */}
-        <div className="w-4/5 h-1/2 grid grid-cols-6 md:grid-cols-10 gap-1 p-4 overflow-hidden content-center justify-items-center opacity-90">
-          {players.flatMap(p => p.discards).map((t, i) => (
-            <MahjongTile key={i} id={t} isDiscard />
-          ))}
-        </div>
+        /* 桌面牌：也適度加大 */
+        .discard-tile {
+            width: 26px;
+            height: 36px;
+            font-size: 22px;
+            margin: 2px;
+            box-shadow: 0 1px 0 #ccc, 0 2px 0 #065f46;
+        }
 
-        {/* 剩餘張數 */}
-        <div className="absolute top-4 left-4 md:top-8 md:left-10 bg-black/40 text-yellow-500 px-3 py-1 rounded-lg border border-white/10">
-          <span className="text-[10px] block opacity-50">TILES</span>
-          <span className="text-lg font-bold leading-none">{deck.length}</span>
-        </div>
-      </div>
+        .bottom-ui {
+            width: 100%;
+            background: linear-gradient(to top, rgba(0,0,0,1) 70%, rgba(0,0,0,0) 100%);
+            padding: 10px 4px calc(10px + env(safe-area-inset-bottom));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 100;
+        }
 
-      {/* 控制台與手牌 */}
-      <div className="w-full max-w-5xl h-[25vh] flex flex-col items-center justify-end pb-4 space-y-3 z-40">
-        
-        {/* 訊息提示 */}
-        <div className="bg-black/40 backdrop-blur-sm px-4 py-1 rounded-full text-white text-xs border border-white/10 animate-pulse">
-          {gameMsg}
-        </div>
+        .status-bar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 15px;
+            font-size: 13px;
+            color: #fbbf24;
+            font-weight: bold;
+        }
 
-        {/* 按鈕區 */}
-        <div className="flex gap-4">
-          {turn === 0 && !isGameOver && (
-            <>
-              <button 
-                disabled={!solver.isWin(players[0].hand)}
-                onClick={() => handleWin(0)}
-                className="bg-red-600 hover:bg-red-500 disabled:opacity-30 text-white font-bold px-6 py-2 rounded-full shadow-lg border-2 border-white/20 active:scale-95 transition-all text-sm"
-              >
-                胡牌
-              </button>
-              <button 
-                disabled={selectedIdx === null}
-                onClick={() => handleDiscard(0, selectedIdx)}
-                className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-30 text-amber-950 font-bold px-6 py-2 rounded-full shadow-lg border-2 border-white/20 active:scale-95 transition-all text-sm"
-              >
-                出牌
-              </button>
-            </>
-          )}
-          {isGameOver && (
-            <button 
-              onClick={initGame}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-8 py-2 rounded-full shadow-lg border-2 border-white/20 flex items-center gap-2"
-            >
-              <RefreshCw size={18} /> 再來一局
-            </button>
-          )}
-        </div>
+        .btn-action {
+            background: linear-gradient(to bottom, #fcd34d, #d97706);
+            border: 2px solid #78350f;
+            color: #000;
+            padding: 6px 24px;
+            border-radius: 8px;
+            font-weight: 900;
+            text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+            box-shadow: 0 4px 0 #78350f;
+        }
+        .btn-action:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #78350f;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-        {/* 手牌展示 */}
-        <div className="w-full flex justify-center items-end px-2 overflow-x-auto no-scrollbar">
-          <div className="flex gap-0.5 md:gap-1 pb-2">
-            {players[0].hand.map((tileId, idx) => (
-              <MahjongTile 
-                key={`${tileId}-${idx}`} 
-                id={tileId} 
-                isSelected={selectedIdx === idx}
-                isNew={idx === players[0].hand.length - 1 && players[0].hand.length === 17}
-                onClick={() => turn === 0 && !isGameOver && setSelectedIdx(idx)}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-      {/* 工具按鈕 */}
-      <div className="fixed top-4 right-4 flex gap-2">
-        <button onClick={initGame} className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20"><Smartphone size={18} /></button>
-        <button className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20"><Settings size={18} /></button>
-      </div>
+        const TILE_SYMBOLS = ['🀇','🀈','🀉','🀊','🀋','🀌','🀍','🀎','🀏','🀙','🀚','🀛','🀜','🀝','🀞','🀟','🀠','🀡','🀐','🀑','🀒','🀓','🀔','🀕','🀖','🀗','🀘','🀀','🀁','🀂','🀃','🀄','🀅','🀆'];
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}} />
-    </div>
-  );
-}
+        const App = () => {
+            const [deck, setDeck] = useState([]);
+            const [players, setPlayers] = useState([
+                { name: '我是七六', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Me' },
+                { name: '憲哥', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix' },
+                { name: '美鳳姐', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lily' },
+                { name: '乃哥', hand: [], discards: [], avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka' }
+            ]);
+            const [turn, setTurn] = useState(0);
+            const [selectedIdx, setSelectedIdx] = useState(null);
+
+            const initGame = () => {
+                let d = []; for(let i=0; i<34; i++) for(let j=0; j<4; j++) d.push(i);
+                d.sort(() => Math.random() - 0.5);
+                const p = [...players];
+                p.forEach(player => {
+                    player.hand = d.splice(0, 16).sort((a,b)=>a-b);
+                    player.discards = [];
+                });
+                setDeck(d); setPlayers(p); setTurn(0);
+                drawTile(0, p, d);
+            };
+
+            const drawTile = (idx, curP, curD) => {
+                if (curD.length === 0) return;
+                const nextD = [...curD];
+                const tile = nextD.shift();
+                const nextP = [...curP];
+                nextP[idx].hand.push(tile);
+                setDeck(nextD); setPlayers(nextP);
+                if (idx !== 0) setTimeout(() => discard(idx, nextP[idx].hand.length-1, nextP, nextD), 1200);
+            };
+
+            const discard = (idx, tIdx, curP, curD) => {
+                const nextP = [...curP];
+                const tile = nextP[idx].hand.splice(tIdx, 1)[0];
+                nextP[idx].discards.push(tile);
+                nextP[idx].hand.sort((a,b)=>a-b);
+                setPlayers(nextP); setSelectedIdx(null);
+                const nextTurn = (idx + 1) % 4;
+                setTurn(nextTurn);
+                setTimeout(() => drawTile(nextTurn, nextP, curD), 600);
+            };
+
+            useEffect(() => { initGame(); }, []);
+
+            return (
+                <div className="game-wrapper">
+                    {/* 上方 NPC */}
+                    <div className="npc-box top-4">
+                        <img src={players[2].avatar} className={`npc-avatar ${turn===2?'ring-4 ring-yellow-400':''}`} />
+                        <span className="text-xs text-white font-bold mt-1 drop-shadow-md">{players[2].name}</span>
+                    </div>
+
+                    {/* 左右 NPC */}
+                    <div className="npc-box left-4 top-[35%]">
+                        <img src={players[1].avatar} className={`npc-avatar ${turn===1?'ring-4 ring-yellow-400':''}`} />
+                        <span className="text-xs text-white font-bold mt-1 drop-shadow-md">{players[1].name}</span>
+                    </div>
+                    <div className="npc-box right-4 top-[35%]">
+                        <img src={players[3].avatar} className={`npc-avatar ${turn===3?'ring-4 ring-yellow-400':''}`} />
+                        <span className="text-xs text-white font-bold mt-1 drop-shadow-md">{players[3].name}</span>
+                    </div>
+
+                    {/* 牌桌區 */}
+                    <div className="table-area">
+                        <div className="mahjong-table">
+                            <div className="flex flex-wrap justify-center content-center w-full h-full max-w-[80%]">
+                                {players.flatMap(p => p.discards).map((t, i) => (
+                                    <div key={i} className={`mj-tile discard-tile ${t<=8||t===31?'text-red-600':'text-green-800'}`}>{TILE_SYMBOLS[t]}</div>
+                                ))}
+                            </div>
+                            <div className="absolute top-4 left-6 text-sm text-yellow-400 font-black drop-shadow-md">剩餘: {deck.length}</div>
+                        </div>
+                    </div>
+
+                    {/* 底部 UI */}
+                    <div className="bottom-ui">
+                        <div className="flex gap-6 mb-4">
+                            {turn === 0 && (
+                                <>
+                                    <button onClick={() => selectedIdx !== null && discard(0, selectedIdx, players, deck)} 
+                                        className="btn-action">出 牌</button>
+                                    <button className="btn-action grayscale opacity-50">胡 牌</button>
+                                </>
+                            )}
+                        </div>
+                        
+                        <div className="flex justify-center w-full px-2 mb-4">
+                            {players[0].hand.map((id, i) => (
+                                <div key={i} 
+                                    onClick={() => turn === 0 && setSelectedIdx(i)}
+                                    className={`mj-tile player-tile ${id<=8||id===31?'text-red-600':'text-green-800'} ${selectedIdx===i?'selected':''}`}>
+                                    {TILE_SYMBOLS[id]}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="status-bar">
+                            <div className="flex items-center gap-2">
+                                <span className="bg-green-600 text-white px-1 rounded">東</span>
+                                <span>我是七六</span>
+                            </div>
+                            <div className="flex gap-4">
+                                <span>💰 9,930</span>
+                                <span className="text-white/70 font-normal">Lv.12 麻將入門</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
 
