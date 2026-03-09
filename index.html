@@ -2,564 +2,348 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>新明星三缺一 - 正宗台灣16張麻將</title>
-    <!-- React & Babel CDN -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CDP 專業實戰助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #1a472a;
-            overscroll-behavior-y: contain;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        }
-        * {
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
-        }
-        /* 自定義捲軸 */
-        ::-webkit-scrollbar {
-            width: 0px;
-            background: transparent;
-        }
-        .tile-shadow {
-            shadow-[1px_3px_0px_#9ca3af];
-        }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #ffffff; color: #333; }
+        .section-title { border-left: 4px solid #94a3b8; padding-left: 12px; margin-bottom: 8px; }
+        .card { background: #fff; border-top: 1px solid #f1f5f9; padding: 15px 0; margin-bottom: 10px; }
+        .input-box { background: #fdfdfd; border: 1px solid #e2e8f0; text-align: center; font-weight: bold; border-radius: 4px; padding: 6px; width: 100%; }
+        .value-label { width: 100px; font-size: 14px; color: #475569; font-weight: 500; }
+        .value-display { width: 120px; text-align: center; font-weight: 900; border-radius: 4px; padding: 4px 0; font-size: 15px; }
+        
+        /* 顏色定義 */
+        .bg-red-light { background-color: #fee2e2; color: #b91c1c; }
+        .bg-blue-light { background-color: #e0f2fe; color: #0369a1; }
+        .bg-green-light { background-color: #dcfce7; color: #15803d; }
+        .bg-gray-light { background-color: #f1f5f9; color: #475569; }
+        
+        .signal-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 100; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     </style>
 </head>
-<body>
-    <div id="root"></div>
+<body class="bg-gray-50 pb-20">
 
-    <script type="text/babel">
-        const { useState, useEffect, useCallback, useRef } = React;
+    <div id="toast" class="toast">分析報告已成功複製！</div>
 
-        // ==========================================
-        // 遊戲輔助函式、常數與對話庫
-        // ==========================================
+    <div class="max-w-md mx-auto bg-white min-h-screen shadow-sm">
+        
+        <!-- Header -->
+        <div class="px-4 pt-6 pb-2 text-center">
+            <p class="text-[10px] text-orange-400 font-bold tracking-widest">— 一鍵計算支撐壓力，掌握台股趨勢先機 —</p>
+            <div class="mt-4 relative">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                <input type="text" id="stock-info" class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-gray-200 rounded text-sm outline-none focus:border-red-400" placeholder="輸入指數/股票名稱或代碼">
+            </div>
+        </div>
 
-        const TILE_MAP = {
-            'W1': '🀇', 'W2': '🀈', 'W3': '🀉', 'W4': '🀊', 'W5': '🀋', 'W6': '🀌', 'W7': '🀍', 'W8': '🀎', 'W9': '🀏', 
-            'S1': '🀐', 'S2': '🀑', 'S3': '🀒', 'S4': '🀓', 'S5': '🀔', 'S6': '🀕', 'S7': '🀖', 'S8': '🀗', 'S9': '🀘', 
-            'T1': '🀙', 'T2': '🀚', 'T3': '🀛', 'T4': '🀜', 'T5': '🀝', 'T6': '🀞', 'T7': '🀟', 'T8': '🀠', 'T9': '🀡', 
-            'F1': '🀀', 'F2': '🀁', 'F3': '🀂', 'F4': '🀃', 
-            'J1': '🀄', 'J2': '🀅', 'J3': '🀆', 
-        };
+        <!-- 籌碼監控 (隱藏邏輯) -->
+        <div class="px-4 flex justify-end gap-2 items-center mb-4">
+            <span class="text-[10px] font-bold text-gray-400">籌碼紅綠燈</span>
+            <div id="light-red" class="w-3 h-3 rounded-full bg-gray-200"></div>
+            <div id="light-yellow" class="w-3 h-3 rounded-full bg-gray-200"></div>
+            <div id="light-green" class="w-3 h-3 rounded-full bg-gray-200"></div>
+        </div>
 
-        const SUIT_ORDER = { 'W': 1, 'T': 2, 'S': 3, 'F': 4, 'J': 5 };
+        <!-- 輸入欄位 Grid -->
+        <div class="px-4 grid grid-cols-4 gap-2 mb-4">
+            <div class="text-center">
+                <label class="text-[11px] text-gray-400 block mb-1">開盤</label>
+                <input type="number" id="open" step="0.01" class="input-box" placeholder="--">
+            </div>
+            <div class="text-center">
+                <label class="text-[11px] text-gray-400 block mb-1 text-red-500 font-bold">最高</label>
+                <input type="number" id="high" step="0.01" class="input-box border-red-100" placeholder="--">
+            </div>
+            <div class="text-center">
+                <label class="text-[11px] text-gray-400 block mb-1 text-green-600 font-bold">最低</label>
+                <input type="number" id="low" step="0.01" class="input-box border-green-100" placeholder="--">
+            </div>
+            <div class="text-center">
+                <label class="text-[11px] text-gray-400 block mb-1">收盤</label>
+                <input type="number" id="close" step="0.01" class="input-box" placeholder="--">
+            </div>
+        </div>
 
-        const CHARACTERS = [
-            { name: '憲哥', avatar: '🤵🏼', style: 'text-orange-400', 
-              quotes: { 
-                  draw: ["嘿嘿！見鬼啦！", "這牌真是太銷魂了！", "哎呀，差一點！"], 
-                  discard: ["隨便打啦！", "這張沒用了", "嫂子賣餃子！"], 
-                  win: ["我是Local King！贏啦！", "哇哈哈哈！給錢給錢！"],
-                  lose: ["太瞎了吧！", "今天手氣真背！"]
-              }
-            },
-            { name: '乃哥', avatar: '👨🏻‍💼', style: 'text-blue-400', 
-              quotes: { 
-                  draw: ["不要吵我思考！", "牌怎麼這麼爛！", "快點啦！"], 
-                  discard: ["你懂不懂規矩啊！", "這張你敢要？", "隨便出啦！"], 
-                  win: ["看吧！這就是實力！", "服不服氣啊！"],
-                  lose: ["不錄了！不錄了！", "脾氣都上來了！", "這發牌員有問題！"]
-              }
-            },
-            { name: '瓜哥', avatar: '🧑🏻‍💼', style: 'text-green-400', 
-              quotes: { 
-                  draw: ["主委加碼！", "繼續送幸福！", "這張水喔！"], 
-                  discard: ["下面一位～", "這張給你啦！", "隨便丟隨便中！"], 
-                  win: ["胡啦！恭喜發財！", "太爽啦！獎金拿來！"],
-                  lose: ["哎呀，可惜啊！", "下次再討回來！"]
-              }
-            },
-            { name: '豬大哥', avatar: '🧔🏻', style: 'text-yellow-400', 
-              quotes: { 
-                  draw: ["林北跟你拼了！", "這什麼鬼牌！", "好牌快來！"], 
-                  discard: ["冷涼卡好！", "出這什麼牌啦！", "去你的！"], 
-                  win: ["哈哈哈！贏到脫褲！", "叫我賭神啦！"],
-                  lose: ["暗陰羊咧！", "輸到要跑路了！"]
-              }
-            }
-        ];
+        <div class="px-4 mb-6">
+            <button onclick="calculate()" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded text-sm shadow-md transition-all active:scale-95">
+                一鍵完成計算
+            </button>
+            <button onclick="resetAll()" class="w-full mt-2 text-gray-400 text-[11px] hover:text-gray-600 transition">
+                清除所有參數
+            </button>
+        </div>
 
-        function generateDeck() {
-            let deck = [];
-            Object.keys(TILE_MAP).forEach(id => {
-                for (let i = 0; i < 4; i++) {
-                    deck.push({ id, uniqueId: `${id}-${i}`, symbol: TILE_MAP[id] });
-                }
-            });
-            for (let i = deck.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [deck[i], deck[j]] = [deck[j], deck[i]];
-            }
-            return deck;
-        }
-
-        function sortHand(hand) {
-            return [...hand].sort((a, b) => {
-                const typeA = a.id[0], typeB = b.id[0];
-                if (SUIT_ORDER[typeA] !== SUIT_ORDER[typeB]) {
-                    return SUIT_ORDER[typeA] - SUIT_ORDER[typeB];
-                }
-                return parseInt(a.id[1]) - parseInt(b.id[1]);
-            });
-        }
-
-        function checkHu(tiles) {
-            if (tiles.length % 3 !== 2) return false;
-            let counts = {};
-            for (let t of tiles) counts[t.id] = (counts[t.id] || 0) + 1;
-            let uniqueTiles = Object.keys(counts);
-            for (let pair of uniqueTiles) {
-                if (counts[pair] >= 2) {
-                    let tempCounts = { ...counts };
-                    tempCounts[pair] -= 2;
-                    if (checkMelds(tempCounts, tiles.length - 2)) return true;
-                }
-            }
-            return false;
-        }
-
-        function checkMelds(counts, remaining) {
-            if (remaining === 0) return true;
-            let firstTile = Object.keys(counts).find(k => counts[k] > 0);
-            if (!firstTile) return true;
-            if (counts[firstTile] >= 3) {
-                counts[firstTile] -= 3;
-                if (checkMelds(counts, remaining - 3)) {
-                    counts[firstTile] += 3; 
-                    return true;
-                }
-                counts[firstTile] += 3;
-            }
-            let type = firstTile[0]; 
-            let num = parseInt(firstTile[1]);
-            if (type !== 'F' && type !== 'J' && num <= 7) {
-                let t2 = type + (num + 1);
-                let t3 = type + (num + 2);
-                if (counts[t2] > 0 && counts[t3] > 0) {
-                    counts[firstTile]--; counts[t2]--; counts[t3]--;
-                    if (checkMelds(counts, remaining - 3)) {
-                        counts[firstTile]++; counts[t2]++; counts[t3]++;
-                        return true;
-                    }
-                    counts[firstTile]++; counts[t2]++; counts[t3]++;
-                }
-            }
-            return false;
-        }
-
-        // ==========================================
-        // 顯示組件
-        // ==========================================
-
-        const MahjongTile = ({ tile, isSelected, onClick, className = '', isFaceDown = false, isDiscard = false }) => {
-            if (isFaceDown) {
-                return (
-                    <div className={`w-8 h-12 sm:w-10 sm:h-14 rounded bg-green-700 border-2 border-green-800 shadow-[2px_2px_0px_#14532d] flex-shrink-0 ${className}`}></div>
-                );
-            }
-            const isRed = tile.id.startsWith('W') || tile.id === 'J1';
-            const isGreen = tile.id.startsWith('S') || tile.id === 'J2';
-
-            return (
-                <div onClick={onClick} 
-                     className={`relative bg-[#f4f4f0] rounded border border-gray-300 flex items-center justify-center flex-shrink-0 transition-transform select-none
-                     ${onClick ? 'cursor-pointer hover:-translate-y-1' : ''} 
-                     ${isSelected ? '-translate-y-4 shadow-xl ring-2 ring-yellow-400' : 'shadow-[1px_3px_0px_#9ca3af]'} 
-                     ${isDiscard ? 'w-8 h-10 sm:w-10 sm:h-12 text-2xl sm:text-3xl' : 'w-10 h-14 sm:w-12 sm:h-16 text-4xl sm:text-5xl'} 
-                     ${isRed ? 'text-red-600' : isGreen ? 'text-green-700' : 'text-gray-800'} 
-                     ${className}`}>
-                    <span className="leading-none drop-shadow-sm">{tile.symbol}</span>
+        <!-- 三關價 Section -->
+        <div class="card px-4">
+            <div class="section-title">
+                <h2 class="font-bold text-gray-700 text-sm">三關價</h2>
+                <p class="text-[10px] text-gray-400">判斷隔日可能的支撐與壓力價位</p>
+            </div>
+            <div class="mt-4 space-y-3 px-4">
+                <div class="flex justify-between items-center">
+                    <span class="value-label">上關價</span>
+                    <span id="res-upper" class="value-display bg-red-light">--</span>
                 </div>
-            );
-        };
-
-        const PlayerAvatar = ({ player, isTurn, bubble, isSelf }) => {
-            return (
-                <div className={`relative flex flex-col items-center justify-center p-2 rounded-xl transition-all ${isTurn ? 'bg-yellow-500/20 ring-2 ring-yellow-400' : 'bg-black/20'}`}>
-                    <div className={`text-4xl sm:text-5xl drop-shadow-lg ${isTurn ? 'animate-bounce' : ''}`}>{player.avatar}</div>
-                    {bubble && (
-                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-gray-900 font-bold text-xs px-3 py-1.5 rounded-xl shadow-xl whitespace-nowrap z-50 animate-pulse border-2 border-gray-200">
-                            {bubble}
-                            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rotate-45 border-b-2 border-r-2 border-gray-200"></div>
-                        </div>
-                    )}
-                    <div className={`text-xs sm:text-sm font-bold mt-1 ${isSelf ? 'text-white' : player.style}`}>{player.name}</div>
-                    {!isSelf && (
-                        <div className="flex items-center gap-1 mt-1 text-[10px] text-white/70">
-                            🀫 x {player.hand.length}
-                        </div>
-                    )}
+                <div class="flex justify-between items-center">
+                    <span class="value-label">中關價</span>
+                    <span id="res-mid" class="value-display bg-blue-light">--</span>
                 </div>
-            );
-        };
-
-        // ==========================================
-        // 主應用程式
-        // ==========================================
-
-        function App() {
-            const [gameState, setGameState] = useState('menu');
-            const [deck, setDeck] = useState([]);
-            const [players, setPlayers] = useState([]);
-            const [turn, setTurn] = useState(0);
-            const [dealer, setDealer] = useState(0);
-            const [selectedTileId, setSelectedTileId] = useState(null);
-            const [messages, setMessages] = useState([]);
-            const [bubbles, setBubbles] = useState({});
-            const [interruption, setInterruption] = useState(null);
-            const [winner, setWinner] = useState(null);
-            const [toast, setToast] = useState('');
-
-            const showToast = useCallback((msg) => { 
-                setToast(msg); 
-                setTimeout(() => setToast(''), 2000); 
-            }, []);
-
-            const addMessage = useCallback((msg) => {
-                setMessages(prev => [...prev.slice(-4), msg]);
-            }, []);
-
-            const showBubble = (pIndex, text) => {
-                setBubbles(prev => ({ ...prev, [pIndex]: text }));
-                setTimeout(() => setBubbles(prev => ({ ...prev, [pIndex]: null })), 3000);
-            };
-
-            const playQuote = (pIndex, type) => {
-                if (pIndex === 0) return;
-                const char = CHARACTERS[pIndex - 1];
-                const quotes = char.quotes[type];
-                if (quotes && Math.random() > 0.4) {
-                    showBubble(pIndex, quotes[Math.floor(Math.random() * quotes.length)]);
-                }
-            };
-
-            const initGame = () => {
-                const newDeck = generateDeck();
-                let newPlayers = [
-                    { id: 0, name: '你 (玩家)', avatar: '🧑🏻', style: 'text-white', hand: [], discards: [], melds: [] },
-                    ...CHARACTERS.slice(0, 3).sort(() => Math.random() - 0.5).map((c, i) => ({ 
-                        id: i + 1, name: c.name, avatar: c.avatar, style: c.style, hand: [], discards: [], melds: [], quotes: c.quotes 
-                    }))
-                ];
-                let currentDealer = Math.floor(Math.random() * 4);
-                for (let i = 0; i < 4; i++) {
-                    let numCards = i === currentDealer ? 17 : 16;
-                    newPlayers[i].hand = sortHand(newDeck.splice(0, numCards));
-                }
-                setDeck(newDeck);
-                setPlayers(newPlayers);
-                setDealer(currentDealer);
-                setTurn(currentDealer);
-                setWinner(null);
-                setInterruption(null);
-                setSelectedTileId(null);
-                setMessages([`遊戲開始！${newPlayers[currentDealer].name} 是莊家。`]);
-                setGameState('playing');
-                setBubbles({});
-            };
-
-            const declareWin = useCallback((winnerIndex, isSelfDraw, loserIndex = -1) => {
-                setWinner(winnerIndex);
-                setGameState('gameover');
-                if (winnerIndex === 0) {
-                    playQuote(1, 'lose'); playQuote(2, 'lose'); playQuote(3, 'lose');
-                    addMessage(`🎉 恭喜！你${isSelfDraw ? '自摸' : '胡'}啦！`);
-                } else {
-                    playQuote(winnerIndex, 'win');
-                    addMessage(`😢 ${players[winnerIndex]?.name || '對手'} ${isSelfDraw ? '自摸' : '胡'}了！`);
-                }
-            }, [players, addMessage]);
-
-            const proceedToNextTurn = useCallback((nextTurnIndex) => {
-                if (deck.length === 0) {
-                    addMessage("流局！牌堆已摸完。");
-                    setGameState('gameover');
-                    return;
-                }
-                setDeck(prevDeck => {
-                    const newDeck = [...prevDeck];
-                    const drawnTile = newDeck.shift();
-                    setPlayers(prevPlayers => {
-                        const newPlayers = [...prevPlayers];
-                        newPlayers[nextTurnIndex].hand.push(drawnTile);
-                        newPlayers[nextTurnIndex].hand = sortHand(newPlayers[nextTurnIndex].hand);
-                        return newPlayers;
-                    });
-                    return newDeck;
-                });
-                setTurn(nextTurnIndex);
-                if (nextTurnIndex !== 0) {
-                    playQuote(nextTurnIndex, 'draw');
-                } else {
-                    addMessage(`輪到你了`);
-                }
-            }, [deck.length, addMessage]);
-
-            const checkPlayerInterruption = useCallback((tile, fromPlayer) => {
-                let p0Hand = players[0].hand;
-                let possibleActions = [];
-                if (checkHu([...p0Hand, tile])) possibleActions.push('hu');
-                const sameTiles = p0Hand.filter(t => t.id === tile.id);
-                if (sameTiles.length >= 2) possibleActions.push('pong');
-
-                if (possibleActions.length > 0) {
-                    setInterruption({ tile, fromPlayer, actions: possibleActions });
-                } else {
-                    proceedToNextTurn((fromPlayer + 1) % 4);
-                }
-            }, [players, proceedToNextTurn]);
-
-            const executeDiscard = useCallback((pIndex, tile) => {
-                setPlayers(prev => {
-                    const newPlayers = [...prev];
-                    newPlayers[pIndex].hand = newPlayers[pIndex].hand.filter(t => t.uniqueId !== tile.uniqueId);
-                    newPlayers[pIndex].hand = sortHand(newPlayers[pIndex].hand);
-                    newPlayers[pIndex].discards.push(tile);
-                    return newPlayers;
-                });
-                setSelectedTileId(null);
-                addMessage(`${players[pIndex]?.name} 打出了 ${tile.symbol}`);
-                if (pIndex !== 0) playQuote(pIndex, 'discard');
-
-                if (pIndex !== 0) {
-                    checkPlayerInterruption(tile, pIndex);
-                } else {
-                    proceedToNextTurn((pIndex + 1) % 4);
-                }
-            }, [players, addMessage, checkPlayerInterruption, proceedToNextTurn]);
-
-            const handleDiscard = () => {
-                if (turn !== 0 || interruption || winner !== null) return;
-                if (!selectedTileId) return showToast("請先選擇一張牌！");
-                if (players[0].hand.length % 3 !== 2) return showToast("還沒輪到你摸牌！");
-                const tileIndex = players[0].hand.findIndex(t => t.uniqueId === selectedTileId);
-                const discardedTile = players[0].hand[tileIndex];
-                executeDiscard(0, discardedTile);
-            };
-
-            useEffect(() => {
-                if (gameState !== 'playing' || winner !== null || interruption) return;
-                let timer;
-                if (turn !== 0) {
-                    timer = setTimeout(() => {
-                        let aiHand = players[turn].hand;
-                        if (checkHu(aiHand)) {
-                            declareWin(turn, true);
-                            return;
-                        }
-                        let discardTile = aiHand[Math.floor(Math.random() * aiHand.length)];
-                        const counts = {};
-                        aiHand.forEach(t => counts[t.id] = (counts[t.id] || 0) + 1);
-                        const singles = aiHand.filter(t => counts[t.id] === 1 && (t.id.startsWith('F') || t.id.startsWith('J')));
-                        if (singles.length > 0) discardTile = singles[0];
-                        executeDiscard(turn, discardTile);
-                    }, 1500);
-                }
-                return () => clearTimeout(timer);
-            }, [turn, gameState, winner, interruption, players, declareWin, executeDiscard]);
-
-            const handleInterruption = (action) => {
-                const { tile, fromPlayer } = interruption;
-                if (action === 'pass') {
-                    setInterruption(null);
-                    proceedToNextTurn((fromPlayer + 1) % 4);
-                    return;
-                }
-                setPlayers(prev => {
-                    const newPlayers = [...prev];
-                    if (action === 'hu') {
-                        newPlayers[0].hand.push(tile);
-                        newPlayers[fromPlayer].discards.pop();
-                        setInterruption(null);
-                        declareWin(0, false, fromPlayer);
-                    } else if (action === 'pong') {
-                        const sameTiles = newPlayers[0].hand.filter(t => t.id === tile.id);
-                        const keepTiles = newPlayers[0].hand.filter(t => t.id !== tile.id);
-                        newPlayers[0].hand = keepTiles;
-                        newPlayers[fromPlayer].discards.pop();
-                        newPlayers[0].melds.push({ type: 'pong', tiles: [sameTiles[0], sameTiles[1], tile] });
-                        setInterruption(null);
-                        setTurn(0);
-                        addMessage(`你碰了 ${tile.symbol}！`);
-                    }
-                    return newPlayers;
-                });
-            };
-
-            const handleSelfHu = () => {
-                if (turn !== 0 || players[0].hand.length % 3 !== 2) return;
-                if (checkHu(players[0].hand)) {
-                    declareWin(0, true);
-                } else {
-                    showToast("牌型不符合胡牌條件喔！");
-                }
-            };
-
-            if (gameState === 'menu') {
-                return (
-                    <div className="flex flex-col items-center justify-center h-screen w-screen bg-green-900 text-white p-4 overflow-hidden relative font-sans">
-                        <div className="absolute inset-0 opacity-10 flex items-center justify-center text-[20rem] pointer-events-none">🀄</div>
-                        <h1 className="text-5xl sm:text-7xl font-extrabold mb-4 tracking-widest text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-yellow-600 drop-shadow-[0_5px_5px_rgba(0,0,0,0.8)]">
-                            新明星三缺一
-                        </h1>
-                        <p className="text-xl sm:text-2xl font-bold mb-12 text-yellow-400 drop-shadow-md">✨ 正宗台灣 16 張麻將 ✨</p>
-                        <div className="grid grid-cols-4 gap-4 mb-12">
-                            {CHARACTERS.map((c, i) => (
-                                <div key={i} className="flex flex-col items-center bg-black/40 p-4 rounded-2xl border border-white/20 shadow-xl">
-                                    <span className="text-5xl mb-2">{c.avatar}</span>
-                                    <span className={`font-bold ${c.style}`}>{c.name}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <button onClick={initGame} className="px-12 py-4 bg-gradient-to-r from-yellow-500 to-yellow-600 text-red-900 rounded-full text-3xl font-black shadow-[0_8px_0_#9a3412] active:shadow-[0_0px_0_#9a3412] active:translate-y-2 transition-all hover:brightness-110">
-                            摸八圈去！
-                        </button>
-                    </div>
-                );
-            }
-
-            return (
-                <div className="w-full h-screen bg-[#1a472a] relative overflow-hidden flex flex-col font-sans select-none touch-none">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_#205b36_0%,_#12321d_100%)] opacity-90 pointer-events-none"></div>
-                    
-                    <div className="absolute top-4 left-4 bg-black/60 p-3 rounded-xl text-white text-xs sm:text-sm z-30 shadow-lg border border-green-800 backdrop-blur-sm">
-                        <div className="font-bold text-yellow-400 mb-2 border-b border-white/20 pb-1 flex justify-between">
-                            <span>剩餘：{deck.length}</span>
-                        </div>
-                        {players.map((p, i) => (
-                            <div key={i} className={`flex items-center justify-between w-32 mb-1 ${i === dealer ? 'text-yellow-300' : 'text-gray-300'}`}>
-                                <span>{i === dealer ? '莊 ' : ''}{p.name}</span>
-                                <span className="text-[10px] opacity-70 border border-current px-1 rounded bg-black/50">🀫 {p.hand.length}</span>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="absolute top-1/4 left-4 w-48 text-xs bg-black/30 p-2 rounded-lg text-white/80 max-h-32 overflow-hidden pointer-events-none z-20 hidden md:block border border-white/10">
-                        {messages.map((m, i) => <div key={i} className="mb-1">{m}</div>)}
-                    </div>
-
-                    {toast && (
-                        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 bg-red-600/90 backdrop-blur-sm text-white px-8 py-3 rounded-full shadow-2xl z-[80] animate-bounce text-lg font-bold border-2 border-yellow-400">
-                            {toast}
-                        </div>
-                    )}
-
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 flex flex-col items-center z-20">
-                        <PlayerAvatar player={players[2]} isTurn={turn === 2} bubble={bubbles[2]} />
-                        <div className="flex mt-2">
-                            {players[2].discards.slice(-8).map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-ml-1" />)}
-                        </div>
-                    </div>
-
-                    <div className="absolute top-1/2 -translate-y-1/2 left-4 flex flex-row items-center z-20">
-                        <PlayerAvatar player={players[1]} isTurn={turn === 1} bubble={bubbles[1]} />
-                        <div className="flex flex-col ml-4">
-                            {players[1].discards.slice(-6).map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-mt-2" />)}
-                        </div>
-                    </div>
-
-                    <div className="absolute top-1/2 -translate-y-1/2 right-4 flex flex-row-reverse items-center z-20">
-                        <PlayerAvatar player={players[3]} isTurn={turn === 3} bubble={bubbles[3]} />
-                        <div className="flex flex-col mr-4">
-                            {players[3].discards.slice(-6).map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-mt-2" />)}
-                        </div>
-                    </div>
-
-                    <div className="absolute top-[55%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-10 flex flex-wrap justify-center gap-1 opacity-80 pointer-events-none px-12">
-                         {players[0].discards.map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="shadow-none" />)}
-                    </div>
-
-                    {interruption && (
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-black/80 backdrop-blur-md p-6 rounded-2xl border-2 border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)] flex flex-col items-center animate-pulse">
-                            <p className="text-white mb-4 text-lg font-bold">{players[interruption.fromPlayer]?.name} 出牌：</p>
-                            <MahjongTile tile={interruption.tile} className="mb-6 scale-125" />
-                            <div className="flex gap-4">
-                                {interruption.actions.includes('hu') && (
-                                    <button onClick={() => handleInterruption('hu')} className="px-6 py-2 bg-red-600 text-white font-bold rounded shadow-lg hover:bg-red-500 text-xl">胡！</button>
-                                )}
-                                {interruption.actions.includes('pong') && (
-                                    <button onClick={() => handleInterruption('pong')} className="px-6 py-2 bg-blue-600 text-white font-bold rounded shadow-lg hover:bg-blue-500 text-xl">碰</button>
-                                )}
-                                <button onClick={() => handleInterruption('pass')} className="px-6 py-2 bg-gray-500 text-white font-bold rounded shadow-lg hover:bg-gray-400 text-xl">過</button>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className={`absolute bottom-0 left-0 w-full flex flex-col items-center pb-6 pt-10 transition-colors z-40 ${turn === 0 ? 'bg-gradient-to-t from-yellow-500/20 to-transparent' : ''}`}>
-                        <div className="flex items-center justify-between w-full px-4 max-w-4xl mx-auto mb-4 h-12">
-                            <div className="flex items-center gap-4">
-                                <PlayerAvatar player={players[0]} isTurn={turn === 0} isSelf />
-                                {turn === 0 && !interruption && winner === null && (
-                                    <div className="flex gap-3">
-                                        <button onClick={handleDiscard} className={`px-6 py-2.5 rounded-full font-bold text-sm sm:text-base shadow-lg transition-transform ${selectedTileId ? 'bg-blue-600 text-white active:scale-95' : 'bg-gray-500 text-gray-300 cursor-not-allowed opacity-50'}`}>
-                                            打牌
-                                        </button>
-                                        {players[0].hand.length % 3 === 2 && (
-                                            <button onClick={handleSelfHu} className="px-6 py-2.5 bg-red-600 text-white rounded-full shadow-[0_0_15px_rgba(220,38,38,0.8)] font-bold text-sm sm:text-base animate-pulse">
-                                                自摸！
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="relative w-full max-w-5xl mx-auto flex items-end justify-center px-2 pb-2 h-24">
-                            {players[0].melds.length > 0 && (
-                                <div className="flex gap-2 mr-6 bg-black/30 p-2 rounded-xl">
-                                    {players[0].melds.map((meld, idx) => (
-                                        <div key={idx} className="flex">
-                                            {meld.tiles.map((t, i) => <MahjongTile key={i} tile={t} isDiscard className="-ml-1 border-yellow-600" />)}
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="flex items-end justify-center bg-black/20 p-2 rounded-2xl border-b-4 border-green-900 shadow-2xl overflow-x-auto max-w-full">
-                                {players[0].hand.map((tile, idx) => {
-                                    const isDrawnTile = (idx === players[0].hand.length - 1) && (players[0].hand.length % 3 === 2);
-                                    return (
-                                        <div key={tile.uniqueId} className={`transition-all duration-200 ${isDrawnTile ? 'ml-4 sm:ml-6' : '-ml-1 sm:-ml-2'}`}>
-                                            <MahjongTile 
-                                                tile={tile} 
-                                                isSelected={selectedTileId === tile.uniqueId} 
-                                                onClick={() => turn === 0 && !interruption ? setSelectedTileId(selectedTileId === tile.uniqueId ? null : tile.uniqueId) : null} 
-                                            />
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
-                    </div>
-
-                    {gameState === 'gameover' && (
-                        <div className="absolute inset-0 bg-black/90 backdrop-blur-sm z-[100] flex flex-col items-center justify-center p-4">
-                            <h1 className={`text-5xl sm:text-6xl font-extrabold mb-8 animate-bounce text-center ${winner === 0 ? 'text-yellow-400' : 'text-gray-300'}`}>
-                                {winner === 0 ? '🏆 你贏啦！胡牌！' : winner !== null ? `😢 ${players[winner]?.name} 胡牌！` : '🤝 流局！'}
-                            </h1>
-                            <div className="flex space-x-6">
-                                <button onClick={initGame} className="px-10 py-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full text-2xl font-bold shadow-[0_6px_0_#166534] active:translate-y-2 active:shadow-none transition-all">
-                                    再來一局
-                                </button>
-                                <button onClick={() => setGameState('menu')} className="px-8 py-4 bg-gray-700 text-white rounded-full text-xl font-bold shadow-[0_6px_0_#374151] active:translate-y-2 active:shadow-none transition-all">
-                                    回首頁
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                <div class="flex justify-between items-center">
+                    <span class="value-label">下關價</span>
+                    <span id="res-lower" class="value-display bg-green-light">--</span>
                 </div>
-            );
+            </div>
+        </div>
+
+        <!-- CDP Section -->
+        <div class="card px-4">
+            <div class="section-title">
+                <h2 class="font-bold text-gray-700 text-sm">逆勢操作 (CDP)</h2>
+                <p class="text-[10px] text-gray-400">依價位區間判斷多空轉折的操作指標</p>
+            </div>
+            <div class="mt-4 space-y-2 px-4">
+                <div class="flex justify-between items-center" id="row-ah">
+                    <span class="value-label">多頭 (AH)</span>
+                    <span id="res-ah" class="value-display bg-green-light">--</span>
+                </div>
+                <div class="flex justify-between items-center" id="row-nh">
+                    <span class="value-label">轉強 (NH)</span>
+                    <span id="res-nh" class="value-display bg-green-light opacity-60">--</span>
+                </div>
+                <div class="flex justify-between items-center" id="row-cdp">
+                    <span class="value-label">盤整 (CDP)</span>
+                    <span id="res-cdp" class="value-display bg-blue-light">--</span>
+                </div>
+                <div class="flex justify-between items-center" id="row-nl">
+                    <span class="value-label">轉弱 (NL)</span>
+                    <span id="res-nl" class="value-display bg-red-light opacity-60">--</span>
+                </div>
+                <div class="flex justify-between items-center" id="row-al">
+                    <span class="value-label">空頭 (AL)</span>
+                    <span id="res-al" class="value-display bg-red-light">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pivot Section -->
+        <div class="card px-4">
+            <div class="section-title">
+                <h2 class="font-bold text-gray-700 text-sm">樞紐線 (Pivot Point)</h2>
+                <p class="text-[10px] text-gray-400">交易者常用的日內多空轉折點參考</p>
+            </div>
+            <div class="mt-4 space-y-2 px-4">
+                <div class="flex justify-between items-center"><span class="value-label text-xs">壓力 R3</span><span id="res-r3" class="value-display bg-red-light opacity-30 text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">壓力 R2</span><span id="res-r2" class="value-display bg-red-light opacity-50 text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">壓力 R1</span><span id="res-r1" class="value-display bg-red-light opacity-70 text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs font-bold text-blue-600">中間樞紐點 P</span><span id="res-p" class="value-display bg-blue-light text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">支撐 S1</span><span id="res-s1" class="value-display bg-green-light opacity-70 text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">支撐 S2</span><span id="res-s2" class="value-display bg-green-light opacity-50 text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">支撐 S3</span><span id="res-s3" class="value-display bg-green-light opacity-30 text-xs">--</span></div>
+            </div>
+        </div>
+
+        <!-- 3-6 / 5-20 Divergence (對照圖一) -->
+        <div class="card px-4">
+            <div class="section-title">
+                <h2 class="font-bold text-gray-700 text-sm">3-6 差離</h2>
+                <p class="text-[10px] text-gray-400">觀察樞紐線均線差距，判斷市場動能強弱</p>
+            </div>
+            <div class="mt-4 space-y-2 px-4">
+                <div class="flex justify-between items-center"><span class="value-label text-xs">隔 1 日差離值</span><span class="value-display bg-gray-light text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">隔 2 日差離值</span><span class="value-display bg-gray-light text-xs">--</span></div>
+                <div class="flex justify-between items-center"><span class="value-label text-xs">隔 3 日差離值</span><span class="value-display bg-gray-light text-xs">--</span></div>
+            </div>
+        </div>
+
+        <!-- 實戰監控分析面板 -->
+        <div id="analysis-panel" class="m-4 p-4 rounded-xl border-2 border-indigo-100 bg-indigo-50/30 hidden">
+            <div class="flex items-center gap-2 mb-3">
+                <span id="signal-emoji" class="text-2xl">⚡</span>
+                <h3 id="signal-title" class="font-black text-indigo-900">實戰訊號判斷</h3>
+            </div>
+            
+            <div class="mb-4">
+                <label class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">輸入即時現價監控訊號</label>
+                <input type="number" id="current-price" oninput="liveMonitor()" class="w-full mt-1 p-3 bg-white border border-indigo-200 rounded-lg text-xl font-black text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="0.00">
+            </div>
+
+            <p id="signal-desc" class="text-xs text-slate-600 leading-relaxed mb-4">請輸入現價以啟動 Efron 實戰策略分析。</p>
+
+            <!-- 複製按鈕強化 -->
+            <button onclick="copyFullReport()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-2 py-4 rounded-xl shadow-lg transition-all active:scale-95 group">
+                <span class="font-black">複製完整分析報告</span>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="p-8 text-center text-[10px] text-gray-300">
+            Efron 策略邏輯對照版 V2.0<br>技術指標僅供參考，投資請嚴格執行停損
+        </div>
+    </div>
+
+    <!-- 隱藏複製區域 -->
+    <textarea id="hidden-copy" class="fixed opacity-0 pointer-events-none"></textarea>
+
+    <script>
+        let results = {};
+
+        function calculate() {
+            const h = parseFloat(document.getElementById('high').value);
+            const l = parseFloat(document.getElementById('low').value);
+            const c = parseFloat(document.getElementById('close').value);
+            
+            if (isNaN(h) || isNaN(l) || isNaN(c)) return;
+
+            // 1. CDP
+            const cdp = (h + l + 2 * c) / 4;
+            const ah = cdp + (h - l);
+            const nh = 2 * cdp - l;
+            const nl = 2 * cdp - h;
+            const al = cdp - (h - l);
+
+            // 2. 三關價
+            const upper = h + (c - l) * 0.5;
+            const mid = (h + l) / 2;
+            const lower = l - (h - c) * 0.5;
+
+            // 3. Pivot
+            const p = (h + l + c) / 3;
+            const r1 = 2 * p - l;
+            const s1 = 2 * p - h;
+            const r2 = p + (h - l);
+            const s2 = p - (h - l);
+            const r3 = h + 2 * (p - l);
+            const s3 = l - 2 * (h - p);
+
+            // 儲存結果
+            results = { ah, nh, cdp, nl, al, upper, mid, lower, p, r1, r2, r3, s1, s2, s3 };
+
+            // 顯示
+            document.getElementById('res-ah').innerText = ah.toFixed(2);
+            document.getElementById('res-nh').innerText = nh.toFixed(2);
+            document.getElementById('res-cdp').innerText = cdp.toFixed(2);
+            document.getElementById('res-nl').innerText = nl.toFixed(2);
+            document.getElementById('res-al').innerText = al.toFixed(2);
+            
+            document.getElementById('res-upper').innerText = upper.toFixed(2);
+            document.getElementById('res-mid').innerText = mid.toFixed(2);
+            document.getElementById('res-lower').innerText = lower.toFixed(2);
+
+            document.getElementById('res-p').innerText = p.toFixed(2);
+            document.getElementById('res-r1').innerText = r1.toFixed(2);
+            document.getElementById('res-r2').innerText = r2.toFixed(2);
+            document.getElementById('res-r3').innerText = r3.toFixed(2);
+            document.getElementById('res-s1').innerText = s1.toFixed(2);
+            document.getElementById('res-s2').innerText = s2.toFixed(2);
+            document.getElementById('res-s3').innerText = s3.toFixed(2);
+
+            document.getElementById('analysis-panel').classList.remove('hidden');
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        function liveMonitor() {
+            const now = parseFloat(document.getElementById('current-price').value);
+            const { ah, nh, cdp, nl, al } = results;
+            if (isNaN(now) || !ah) return;
+
+            const desc = document.getElementById('signal-desc');
+            const title = document.getElementById('signal-title');
+            const icon = document.getElementById('signal-emoji');
+
+            // 重置高亮
+            const rows = ['row-ah', 'row-nh', 'row-cdp', 'row-nl', 'row-al'];
+            rows.forEach(r => document.getElementById(r).className = "flex justify-between items-center p-1 rounded transition-all");
+
+            if (now >= ah) {
+                icon.innerText = "🚀";
+                title.innerText = "極強勢：突破 AH";
+                desc.innerText = "股價強勢站上 AH 之上。依 Efron 策略，若籌碼持續偏多，此為強勢加碼點，挑戰波段新高！";
+                document.getElementById('row-ah').className += " bg-indigo-100 ring-2 ring-indigo-400";
+                setLights('red');
+            } else if (now >= nh) {
+                icon.innerText = "🔥";
+                title.innerText = "轉強：突破 NH";
+                desc.innerText = "股價突破 NH 值。依圖二/三策略，此為多單進場訊號，代表短期多頭動能轉強。";
+                document.getElementById('row-nh').className += " bg-indigo-100 ring-2 ring-indigo-400";
+                setLights('red');
+            } else if (now >= cdp) {
+                icon.innerText = "⚖️";
+                title.innerText = "盤整：多空對峙";
+                desc.innerText = "股價位於 CDP 以上，但尚未突破 NH。屬於偏多震盪格局，建議觀察籌碼紅綠燈。";
+                document.getElementById('row-cdp').className += " bg-indigo-100 ring-2 ring-indigo-400";
+                setLights('yellow');
+            } else if (now >= nl) {
+                icon.innerText = "⚠️";
+                title.innerText = "轉弱：跌破 CDP";
+                desc.innerText = "目前位於 CDP 以下，偏空整理。若進一步跌破 NL，應注意多單回補或止損。";
+                setLights('yellow');
+            } else {
+                icon.innerText = "📉";
+                title.innerText = "極弱勢：跌破 AL";
+                desc.innerText = "跌破 AL 最強支撐。強烈建議嚴格執行停損，防範波段續跌。";
+                document.getElementById('row-al').className += " bg-indigo-100 ring-2 ring-indigo-400";
+                setLights('green');
+            }
+        }
+
+        function setLights(color) {
+            const r = document.getElementById('light-red');
+            const y = document.getElementById('light-yellow');
+            const g = document.getElementById('light-green');
+            [r, y, g].forEach(l => l.className = "w-3 h-3 rounded-full bg-gray-200");
+            if(color === 'red') r.className += " bg-red-500 signal-pulse shadow-[0_0_8px_red]";
+            if(color === 'yellow') y.className += " bg-yellow-400";
+            if(color === 'green') g.className += " bg-green-500 signal-pulse shadow-[0_0_8px_green]";
+        }
+
+        function resetAll() {
+            document.querySelectorAll('input').forEach(i => i.value = "");
+            document.querySelectorAll('.value-display').forEach(v => v.innerText = "--");
+            document.getElementById('analysis-panel').classList.add('hidden');
+            setLights(null);
+        }
+
+        function copyFullReport() {
+            const stock = document.getElementById('stock-info').value || "未知名";
+            const now = document.getElementById('current-price').value || "未提供";
+            const reportText = `【${stock} CDP 實戰分析報告】
+即時價格：${now}
+---
+● 三關價：
+上關：${results.upper.toFixed(2)} | 中關：${results.mid.toFixed(2)} | 下關：${results.lower.toFixed(2)}
+
+● CDP 五關價：
+AH(極強)：${results.ah.toFixed(2)}
+NH(轉強)：${results.nh.toFixed(2)}
+CDP(中值)：${results.cdp.toFixed(2)}
+NL(轉弱)：${results.nl.toFixed(2)}
+AL(極弱)：${results.al.toFixed(2)}
+
+● 樞紐分析 (Pivot)：
+P點：${results.p.toFixed(2)}
+壓力：R1=${results.r1.toFixed(2)} | R2=${results.r2.toFixed(2)} | R3=${results.r3.toFixed(2)}
+支撐：S1=${results.s1.toFixed(2)} | S2=${results.s2.toFixed(2)} | S3=${results.s3.toFixed(2)}
+
+分析建議：${document.getElementById('signal-desc').innerText}
+---
+(由 CDP 實戰助手生成)`;
+
+            const hiddenArea = document.getElementById('hidden-copy');
+            hiddenArea.value = reportText;
+            hiddenArea.select();
+            document.execCommand('copy');
+
+            // Toast 提示
+            const toast = document.getElementById('toast');
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 2000);
+        }
     </script>
 </body>
 </html>
